@@ -36,9 +36,9 @@ public:
 	VkQueue getComputeQueue() const;
 	VkQueue getTransferQueue() const;
 	VkQueue getPresentQueue() const;
+	QueueFamilyIndices getFamilyIndices() const;
 
 	static QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
-	static uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags, std::vector<VkQueueFamilyProperties> familyProperties);
 
 
 private:
@@ -55,6 +55,8 @@ private:
 	VkQueue transferQueue;
 	VkQueue presentQueue;
 
+	QueueFamilyIndices indices;
+
 	std::vector<const char*> deviceExtensions;
 	std::vector<const char*> validationLayers;
 
@@ -64,6 +66,7 @@ private:
 	bool isDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface);
 	bool checkDeviceExtensionSupport(VkPhysicalDevice physicalDevice);
 	
+	static uint32_t getQueueFamilyIndex(VkQueueFlags queueFlags, std::vector<VkQueueFamilyProperties> familyProperties);
 
 };
 

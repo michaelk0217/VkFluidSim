@@ -22,6 +22,15 @@ public:
 		const std::string& fragShaderPath
 	);
 
+	void createLiquidBoxPipeline(
+		VkDevice device,
+		VkPhysicalDevice physicalDevice,
+		VkPipelineLayout pipelineLayout,
+		VkFormat colorAttachmentFormat,
+		const std::string& vertShaderPath,
+		const std::string& fragShaderPath
+	);
+
 	VkPipeline getGraphicsPipeline() const;
 
 private:

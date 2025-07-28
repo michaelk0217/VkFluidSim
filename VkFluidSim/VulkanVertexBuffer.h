@@ -14,6 +14,12 @@ public:
 	void destroy();
 
 	VkBuffer getVkBuffer() const;
+
+	void createCoherent(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size);
+
+	void* map() const;
+	void unmap() const;
+
 private:
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;

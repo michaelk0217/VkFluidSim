@@ -75,3 +75,38 @@ VkBuffer VulkanVertexBuffer::getVkBuffer() const
 {
 	return vertexBuffer;
 }
+
+void VulkanVertexBuffer::createCoherent(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size)
+{
+	this->device = device;
+	//VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+	VulkanBuffer::createBuffer(
+		device,
+		physicalDevice,
+		size,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		vertexBuffer,
+		vertexBufferMemory
+	);
+
+	/*void* data;
+	vkMapMemory(device, vertexBufferMemory, 0, size, 0, &data);
+	memcpy(data, vertices.data(), (size_t)size);
+	vkUnmapMemory(device, vertexBufferMemory);*/
+}
+
+void VulkanVertexBuffer::unmap() const
+{
+	vkUnmapMemory(device, vertexBufferMemory);
+}
+
+void* VulkanVertexBuffer::map() const
+{
+	void* data;
+	vkMapMemory(device, vertexBufferMemory, 0, VK_WHOLE_SIZE, 0, &data);
+	return data;
+}
+
+

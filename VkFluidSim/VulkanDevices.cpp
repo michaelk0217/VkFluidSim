@@ -47,6 +47,11 @@ VkQueue VulkanDevices::getPresentQueue() const
 	return presentQueue;
 }
 
+QueueFamilyIndices VulkanDevices::getFamilyIndices() const
+{
+	return indices;
+}
+
 void VulkanDevices::pickPhysicalDevice(VkInstance instance)
 {
 	uint32_t deviceCount = 0;
@@ -72,7 +77,7 @@ void VulkanDevices::pickPhysicalDevice(VkInstance instance)
 
 void VulkanDevices::createLogicalDevice()
 {
-	QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
+	indices = findQueueFamilies(physicalDevice, surface);
 
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.computeFamily.value(), indices.transferFamily.value(), indices.presentFamily.value() };
@@ -93,6 +98,7 @@ void VulkanDevices::createLogicalDevice()
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.tessellationShader = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
+	deviceFeatures.wideLines = VK_TRUE;
 
 	VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamic_rendering_feature{};
 	dynamic_rendering_feature.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES_KHR;

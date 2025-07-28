@@ -10,6 +10,7 @@
 
 #include <vulkan/vulkan.h>
 #include <array>
+#include <vector>
 #include <string>
 #include <memory>
 
@@ -57,7 +58,7 @@ struct Vertex {
 
 	bool operator==(const Vertex& other) const
 	{
-		return pos == other.pos && color == other.color /*&& texCoord == other.texCoord && inNormal == other.inNormal*/;
+		return pos == other.pos/* && color == other.color && texCoord == other.texCoord && inNormal == other.inNormal*/;
 	}
 };
 
@@ -66,16 +67,30 @@ namespace std {
 	{
 		size_t operator()(Vertex const& vertex) const
 		{
-			return  ((hash<glm::vec3>()(vertex.pos) ^
-				(hash<glm::vec3>()(vertex.color) << 1)) >> 1)/* ^
+			/*return  ((hash<glm::vec3>()(vertex.pos) ^
+				(hash<glm::vec3>()(vertex.color) << 1)) >> 1)^
 				(hash<glm::vec2>()(vertex.texCoord) << 1) ^
-				(hash<glm::vec3>()(vertex.inNormal) << 2)*/;
+				(hash<glm::vec3>()(vertex.inNormal) << 2);*/
+			return hash<glm::vec3>()(vertex.pos);
 		}
 	};
 }
 
 struct ShaderData {
-	alignas(16) glm::mat4 projectionMatrix;
 	alignas(16) glm::mat4 modelMatrix;
 	alignas(16) glm::mat4 viewMatrix;
+	alignas(16) glm::mat4 projectionMatrix;
+};
+
+struct Particle {
+	glm::vec3 position{ 0.0f, 0.0f, 0.0f };
+	glm::vec3 velocity{ 0.0f, 0.0f, 0.0f };
+};
+
+struct UiContextPacket {
+	float& boxHalfWidth;
+	float& boxHalfHeight;
+	float& deltaTime;
+	std::vector<float>& frameHistory;
+	float& collisionDamping;
 };

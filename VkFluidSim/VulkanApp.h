@@ -32,6 +32,7 @@
 #include "Window.h"
 #include "Camera.hpp"
 #include "ImGuiManager.h"
+#include "FluidSimulator.h"
 
 //#define VK_USE_PLATFORM_WIN32_KHR
 
@@ -50,9 +51,6 @@ private:
     std::unique_ptr<VulkanDescriptorSetLayout> descriptorSetLayout;
     std::unique_ptr<VulkanPipelineLayout> pipelineLayout;
 
-    std::unique_ptr<VulkanGraphicsPipeline> graphicsPipeline;
-    std::unique_ptr<VulkanGraphicsPipeline> boxGraphicsPipeline;
-
     std::unique_ptr<VulkanCommandPool> commandPool;
     std::unique_ptr<VulkanDepthResources> depthResourcesObj;
 
@@ -62,62 +60,13 @@ private:
     std::unique_ptr<VulkanCommandBuffers> commandBuffers;
     std::unique_ptr<VulkanSyncPrimitives> syncObj;
 
-    std::unique_ptr<VulkanVertexBuffer> vertexBuffer;
-    std::unique_ptr<VulkanIndexBuffer> indexBuffer;
-
-    std::unique_ptr<VulkanVertexBuffer> boxVertexBuffer;
-    std::unique_ptr<VulkanIndexBuffer> boxIndexBuffer;
 
     std::unique_ptr<ImGuiManager> imguiManager;
 
-    // with color
-    /*const std::vector<Vertex> vertices{
-            { {  1.0f,  1.0f, 0.0f }, { 1.0f, 0.0f, 0.0f } },
-            { { -1.0f,  1.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } },
-            { {  0.0f, -1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f } }
-    };*/
-
-    // initial particle position
-     std::vector<Vertex> vertices;
-
-    //std::vector<uint32_t> indices{ 0, 1, 2 };
-
-    std::vector<uint32_t> indices{ 0 };
+    std::unique_ptr<FluidSimulator> fluidSimulator;
 
 
-    std::vector<Particle> particles;
-    uint32_t numParticles{ 4 };
-    float collisionDamping{ 1.0f };
 
-    // box vertices / indices
-    float boxHalfWidth = 1.0f;
-    float boxHalfHeight = 1.0f;
-    std::vector<Vertex> boxVertices{
-        {{-boxHalfWidth, -boxHalfHeight, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{boxHalfWidth, -boxHalfHeight, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{boxHalfWidth, boxHalfHeight, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{-boxHalfWidth, boxHalfHeight, 0.0f}, {1.0f, 1.0f, 1.0f}}
-    };
-    void updateBoxVertices()
-    {
-        boxVertices[0].pos = glm::vec3(-boxHalfWidth, -boxHalfHeight, 0.0f);
-        boxVertices[1].pos = glm::vec3(boxHalfWidth, -boxHalfHeight, 0.0f);
-        boxVertices[2].pos = glm::vec3(boxHalfWidth, boxHalfHeight, 0.0f);
-        boxVertices[3].pos = glm::vec3(-boxHalfWidth, boxHalfHeight, 0.0f);
-    }
-    std::vector<uint32_t> boxIndices{ 
-        0, 1,
-        1, 2,
-        2, 3,
-        3, 0
-    };
-
-    bool prepared = false;
-    bool resized = false;
-    bool viewUpdated = false;
-    uint32_t width = 2560;
-    uint32_t height = 1440;
-    const std::string windowTitle = "Fluid Simulation";
 
     std::vector<float> frame_history;
     void update_frame_history(float framerate)
@@ -128,6 +77,18 @@ private:
         }
         frame_history.push_back(framerate);
     }
+
+    // simulation run reset
+    bool runSim = false;
+    bool resetSim = true;
+
+
+    bool resized = false;
+    uint32_t width = 2560;
+    uint32_t height = 1440;
+    const std::string windowTitle = "Fluid Simulation";
+
+    
 
     uint32_t currentFrame = 0;
 
@@ -156,8 +117,9 @@ private:
     void windowResize();
     void cleanUp();
     
-    void initializeParticles(uint32_t num);
-    void updateParticles(float deltaTime);
+    //void initializeParticles(uint32_t num);
+    //void updateParticles(float deltaTime);
+    //void updateContainer();
 
 protected:
    

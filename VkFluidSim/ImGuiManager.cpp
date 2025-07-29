@@ -135,16 +135,30 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
     ImGui::PopStyleColor();
 
 
-    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Always);
-    if (ImGui::Begin("Debug Tools")) {
+    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Once);
+    if (ImGui::Begin("Simulation")) {
+
+        ImGui::Text("Controls");
+        ImGui::Separator();
+        if (uiPacket.parameters.runSimulation) {
+            uiPacket.parameters.runSimulation = !ImGui::Button("Stop");
+        }
+        else {
+            uiPacket.parameters.runSimulation = ImGui::Button("Run");
+        }
+        if (!uiPacket.parameters.runSimulation) {
+            uiPacket.parameters.resetSimulation = ImGui::Button("Reset");
+        }
+
+
         ImGui::Text("Border Dimensions");
         ImGui::Separator();
-        ImGui::DragFloat("Width", &uiPacket.boxHalfWidth, 0.01f, 0.1f, 4.0f);
-        ImGui::DragFloat("Height", &uiPacket.boxHalfHeight, 0.01f, 0.1f, 4.0f);
+        ImGui::DragFloat("Width", &uiPacket.parameters.boxHalfWidth, 0.01f, 0.1f, 4.0f);
+        ImGui::DragFloat("Height", &uiPacket.parameters.boxHalfHeight, 0.01f, 0.1f, 4.0f);
         ImGui::Separator();
         ImGui::Text("Particle Behavior");
         ImGui::Separator();
-        ImGui::DragFloat("Collision Damping", &uiPacket.collisionDamping, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
 
 
         //if (ImGui::Button("Crash the App")) {

@@ -38,7 +38,7 @@ void VulkanApp::initVulkan()
     
     pipelineLayout = std::make_unique<VulkanPipelineLayout>(devices->getLogicalDevice(), descriptorSetLayout->getDescriptorSetLayout());
     
-    graphicsPipeline = std::make_unique<VulkanGraphicsPipeline>();
+    /*graphicsPipeline = std::make_unique<VulkanGraphicsPipeline>();
     graphicsPipeline->createDynamic(
         devices->getLogicalDevice(),
         devices->getPhysicalDevice(),
@@ -55,7 +55,7 @@ void VulkanApp::initVulkan()
         swapChain->getColorFormat(),
         "shaders/box.vert.spv",
         "shaders/box.frag.spv"
-    );
+    );*/
 
     commandPool = std::make_unique<VulkanCommandPool>(devices->getLogicalDevice(), devices->getPhysicalDevice(), surface->getSurface());
 
@@ -74,22 +74,22 @@ void VulkanApp::initVulkan()
     syncObj = std::make_unique<VulkanSyncPrimitives>();
     syncObj->create(devices->getLogicalDevice(), MAX_CONCURRENT_FRAMES, static_cast<uint32_t>(swapChain->getImageViews().size()));
 
-    // -------- PARICLE VERTEX / INDEX BUFFERS ------------
-    vertexBuffer = std::make_unique<VulkanVertexBuffer>();
-    //vertexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), vertices);
-    vertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * numParticles));
-    indexBuffer = std::make_unique<VulkanIndexBuffer>();
-    indexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), indices);
+    //// -------- PARICLE VERTEX / INDEX BUFFERS ------------
+    //vertexBuffer = std::make_unique<VulkanVertexBuffer>();
+    ////vertexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), vertices);
+    //vertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * numParticles));
+    //indexBuffer = std::make_unique<VulkanIndexBuffer>();
+    //indexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), indices);
 
-    // -------- CONTAINER VERTEX / INDEX BUFFERS ---------
-    boxVertexBuffer = std::make_unique<VulkanVertexBuffer>();
-    boxVertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * boxVertices.size()));
-    void* boxData = boxVertexBuffer->map();
-    memcpy(boxData, boxVertices.data(), boxVertices.size() * sizeof(Vertex));
-    boxVertexBuffer->unmap();
-    
-    boxIndexBuffer = std::make_unique<VulkanIndexBuffer>();
-    boxIndexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), boxIndices);
+    //// -------- CONTAINER VERTEX / INDEX BUFFERS ---------
+    //boxVertexBuffer = std::make_unique<VulkanVertexBuffer>();
+    //boxVertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * boxVertices.size()));
+    //void* boxData = boxVertexBuffer->map();
+    //memcpy(boxData, boxVertices.data(), boxVertices.size() * sizeof(Vertex));
+    //boxVertexBuffer->unmap();
+    //
+    //boxIndexBuffer = std::make_unique<VulkanIndexBuffer>();
+    //boxIndexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), boxIndices);
 
 
     camera = std::make_unique<Camera>();
@@ -99,13 +99,15 @@ void VulkanApp::initVulkan()
     camera->setPerspective(60.0f, (float)width / (float)height, 1.0f, 500.0f);
 
     imguiManager = std::make_unique<ImGuiManager>(*window, *instance, *devices, *surface, *swapChain, *commandPool);
+
+    fluidSimulator = std::make_unique<FluidSimulator>(*devices, pipelineLayout->getPipelineLayout(), commandPool->getCommandPool(), swapChain->getColorFormat());
 }
 
 void VulkanApp::mainLoop()
 {
     auto lastTime = std::chrono::high_resolution_clock::now();
     frame_history.resize(90, 0);
-    initializeParticles(numParticles);
+    //initializeParticles(numParticles);
 
     while (window && !window->shouldClose())
     {
@@ -118,17 +120,28 @@ void VulkanApp::mainLoop()
 
         update_frame_history(1.0f / deltaTime);
 
+       /* if (resetSim)
+        {
+            initializeParticles(numParticles);
+            resetSim = false;
+        }*/
+
         imguiManager->newFrame();
+        auto& simParams = fluidSimulator->getParameters();
         UiContextPacket uiPacket{ 
-            boxHalfWidth, 
-            boxHalfHeight,
             deltaTime,
             frame_history,
-            collisionDamping
+            simParams
         };
 
         imguiManager->buildUI(uiPacket);
-        updateParticles(deltaTime);
+
+       /* updateContainer();
+        if (runSim)
+        {
+            updateParticles(deltaTime);
+        }*/
+        fluidSimulator->update(deltaTime);
         drawFrame();
     }
 }
@@ -230,28 +243,29 @@ void VulkanApp::drawFrame()
 
     // ----- PARTICLES -----
 
-    // bind graphics pipeline
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getGraphicsPipeline());
-    // bind trainge vertex buffer (contains position and colors)
-    VkDeviceSize offsets[1]{ 0 };
-    VkBuffer vBuff = vertexBuffer->getVkBuffer();
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
-    // bind index buffer
-    /*VkBuffer iBuff = indexBuffer->getVkBuffer();
-    vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);*/
-    // draw indexed 
-    //vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-    vkCmdDraw(commandBuffer, vertices.size(), 1, 0, 0);
+    //// bind graphics pipeline
+    //vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getGraphicsPipeline());
+    //// bind trainge vertex buffer (contains position and colors)
+    //VkDeviceSize offsets[1]{ 0 };
+    //VkBuffer vBuff = vertexBuffer->getVkBuffer();
+    //vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
+    //// bind index buffer
+    ///*VkBuffer iBuff = indexBuffer->getVkBuffer();
+    //vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);*/
+    //// draw indexed 
+    ////vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+    //vkCmdDraw(commandBuffer, vertices.size(), 1, 0, 0);
 
-    // ----- CONTAINER ------
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline->getGraphicsPipeline());
-    vkCmdSetLineWidth(commandBuffer, 5.0f);
-    vBuff = boxVertexBuffer->getVkBuffer();
-    VkBuffer iBuff = boxIndexBuffer->getVkBuffer();
-    vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
-    vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);
-    vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(boxIndices.size()), 1, 0, 0, 0);
+    //// ----- CONTAINER ------
+    //vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline->getGraphicsPipeline());
+    //vkCmdSetLineWidth(commandBuffer, 5.0f);
+    //vBuff = boxVertexBuffer->getVkBuffer();
+    //VkBuffer iBuff = boxIndexBuffer->getVkBuffer();
+    //vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
+    //vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);
+    //vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(boxIndices.size()), 1, 0, 0, 0);
 
+    fluidSimulator->draw(commandBuffer);
 
     // finish the current dynamic rendering section
     vkCmdEndRendering(commandBuffer);
@@ -334,15 +348,10 @@ void VulkanApp::cleanUp()
 {
     vkDeviceWaitIdle(devices->getLogicalDevice());
 
+    fluidSimulator.reset();
     imguiManager.reset();
 
     camera.reset();
-
-    indexBuffer.reset();
-    vertexBuffer.reset();
-
-    boxIndexBuffer.reset();
-    boxVertexBuffer.reset();
 
     syncObj.reset();
     commandBuffers.reset();
@@ -350,8 +359,7 @@ void VulkanApp::cleanUp()
     depthResourcesObj.reset();
     commandPool.reset();
 
-    boxGraphicsPipeline.reset();
-    graphicsPipeline.reset();
+
 
     pipelineLayout.reset();
     descriptorSetLayout.reset();
@@ -362,53 +370,3 @@ void VulkanApp::cleanUp()
     instance.reset();
     window.reset();
 }
-
-void VulkanApp::initializeParticles(uint32_t num)
-{
-    particles.resize(num);
-    vertices.resize(num);
-    for (uint32_t i = 0; i < num; i++)
-    {
-        Particle p{};
-        float step = (boxHalfWidth * 2) / (num + 1);
-        p.position = glm::vec3(-1.0f + (step * (i + 1)), 0.0f, 0.0f);
-        particles[i] = p;
-
-        vertices[i].pos = p.position;
-        vertices[i].color = glm::vec3(0.2, 0.6, 1.0);
-    }
-    
-}
-
-void VulkanApp::updateParticles(float deltaTime)
-{
-    glm::vec3 gravityVector(0.0f, 0.9f, 0.0f);
-
-    for (uint32_t i = 0; i < particles.size(); i++)
-    {
-        particles[i].velocity += (gravityVector * deltaTime);
-        particles[i].position += (particles[i].velocity * deltaTime);
-        if (abs(particles[i].position.x) > boxHalfWidth)
-        {
-            particles[i].position.x = boxHalfWidth * glm::sign(particles[i].position.x);
-            particles[i].velocity.x *= -1.0f * collisionDamping;
-        }
-        if (abs(particles[i].position.y) > boxHalfHeight)
-        {
-            particles[i].position.y = boxHalfHeight * glm::sign(particles[i].position.y);
-            particles[i].velocity.y *= -1.0f * collisionDamping;
-        }
-        vertices[i].pos = particles[i].position;
-    }
-
-    void* data = vertexBuffer->map();
-    memcpy(data, vertices.data(), vertices.size() * sizeof(Vertex));
-    vertexBuffer->unmap();
-    
-    updateBoxVertices();
-    void* boxdata = boxVertexBuffer->map();
-    memcpy(boxdata, boxVertices.data(), boxVertices.size() * sizeof(Vertex));
-    boxVertexBuffer->unmap();
-}
-
-

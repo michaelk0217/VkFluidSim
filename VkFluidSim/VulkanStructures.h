@@ -87,10 +87,25 @@ struct Particle {
 	glm::vec3 velocity{ 0.0f, 0.0f, 0.0f };
 };
 
+
+struct FluidSimParameters
+{
+	uint32_t paricleCount = 100;
+	float collisionDamping = 0.8f;
+	float boxHalfWidth = 1.0f;
+	float boxHalfHeight = 1.0f;
+	bool runSimulation = false;
+	bool resetSimulation = false;
+};
+
 struct UiContextPacket {
-	float& boxHalfWidth;
-	float& boxHalfHeight;
 	float& deltaTime;
 	std::vector<float>& frameHistory;
-	float& collisionDamping;
+	FluidSimParameters& parameters;
+
+	UiContextPacket(float& dt, std::vector<float>& history, FluidSimParameters& params)
+		: deltaTime(dt), frameHistory(history), parameters(params)
+	{
+		// Constructor body can be empty
+	}
 };

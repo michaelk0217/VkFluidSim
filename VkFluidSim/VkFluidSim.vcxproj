@@ -146,6 +146,7 @@
     <ClCompile Include="..\vendor\imgui\imgui_impl_vulkan.cpp" />
     <ClCompile Include="..\vendor\imgui\imgui_tables.cpp" />
     <ClCompile Include="..\vendor\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="FluidSimulator.cpp" />
     <ClCompile Include="ImGuiManager.cpp" />
     <ClCompile Include="VkFluidSim.cpp" />
     <ClCompile Include="VulkanApp.cpp" />
@@ -181,6 +182,7 @@
     <ClInclude Include="..\vendor\imgui\imstb_textedit.h" />
     <ClInclude Include="..\vendor\imgui\imstb_truetype.h" />
     <ClInclude Include="Camera.hpp" />
+    <ClInclude Include="FluidSimulator.h" />
     <ClInclude Include="ImGuiManager.h" />
     <ClInclude Include="VulkanApp.h" />
     <ClInclude Include="VulkanBuffer.h" />

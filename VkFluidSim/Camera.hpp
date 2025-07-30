@@ -89,6 +89,11 @@ public:
 		return zfar;
 	}
 
+	float getFov() const
+	{
+		return fov;
+	}
+
 	void setPerspective(float fov, float aspect, float znear, float zfar)
 	{
 		glm::mat4 currentMatrix = matrices.perspective;

@@ -26,6 +26,7 @@ private:
 	void initializeParticles();
 	void updateContainerBuffer();
 
+
 	VulkanDevices& m_devices;
 
 	std::vector<Particle> m_particles;

@@ -169,6 +169,10 @@ void VulkanApp::drawFrame()
     shaderData.projectionMatrix = camera->matrices.perspective;
     shaderData.viewMatrix = camera->matrices.view;
     shaderData.modelMatrix = glm::mat4(1.0f);
+    shaderData.viewportHeight = (float)this->height;
+    shaderData.fovy = glm::radians(camera->getFov());
+    shaderData.particleWorldRadius = fluidSimulator->getParameters().particleWorldRadius;
+
     memcpy(frameUBO->getMappedMemory(currentFrame), &shaderData, sizeof(shaderData));
 
     vkResetCommandBuffer(commandBuffers->getCommandBuffer(currentFrame), 0);
@@ -241,30 +245,6 @@ void VulkanApp::drawFrame()
         0, nullptr
     );
 
-    // ----- PARTICLES -----
-
-    //// bind graphics pipeline
-    //vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline->getGraphicsPipeline());
-    //// bind trainge vertex buffer (contains position and colors)
-    //VkDeviceSize offsets[1]{ 0 };
-    //VkBuffer vBuff = vertexBuffer->getVkBuffer();
-    //vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
-    //// bind index buffer
-    ///*VkBuffer iBuff = indexBuffer->getVkBuffer();
-    //vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);*/
-    //// draw indexed 
-    ////vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-    //vkCmdDraw(commandBuffer, vertices.size(), 1, 0, 0);
-
-    //// ----- CONTAINER ------
-    //vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, boxGraphicsPipeline->getGraphicsPipeline());
-    //vkCmdSetLineWidth(commandBuffer, 5.0f);
-    //vBuff = boxVertexBuffer->getVkBuffer();
-    //VkBuffer iBuff = boxIndexBuffer->getVkBuffer();
-    //vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
-    //vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);
-    //vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(boxIndices.size()), 1, 0, 0, 0);
-
     fluidSimulator->draw(commandBuffer);
 
     // finish the current dynamic rendering section
@@ -303,12 +283,6 @@ void VulkanApp::drawFrame()
 
     VK_CHECK_RESULT(vkQueueSubmit(devices->getGraphicsQueue(), 1, &submitInfo, syncObj->waitFences[currentFrame]));
 
-    // Pass the current frame buffer to the swap chain
-    /*VkPresentInfoKHR presentInfo{ VK_STRUCTURE_TYPE_PRESENT_INFO_KHR };
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &syncObj->renderCompleteSemaphores[imageIndex];
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = &swapChain->ge*/
 
     result = swapChain->queuePresent(devices->getPresentQueue(), imageIndex, syncObj->renderCompleteSemaphores[imageIndex]);
     if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR))

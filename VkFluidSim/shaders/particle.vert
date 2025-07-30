@@ -9,6 +9,9 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 model;
     mat4 view;
     mat4 proj;
+    float viewportHeight;
+    float fovy;
+    float particleWorldRadius;
 } ubo;
 
 void main() {
@@ -21,5 +24,8 @@ void main() {
     // Pass the input color directly to the fragment shader
     fragColor = inColor;
 
-    gl_PointSize = 20.0;
+    float w_safe = max(gl_Position.w, 0.001);
+    float pointDiameter = ubo.particleWorldRadius * 2.0;
+    // gl_PointSize = 50.0;
+    gl_PointSize = pointDiameter * ubo.viewportHeight / (2 * tan(ubo.fovy * 0.5) * w_safe); 
 }

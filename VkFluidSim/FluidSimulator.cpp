@@ -1,5 +1,7 @@
 #include "FluidSimulator.h"
 
+#include "utilities.hpp"
+
 FluidSimulator::FluidSimulator(
 	VulkanDevices& devices, 
 	VkPipelineLayout pipelineLayout, 
@@ -64,21 +66,36 @@ void FluidSimulator::update(float deltaTime)
     {
         glm::vec3 gravityVector(0.0f, 0.9f, 0.0f);
 
+        float effectiveBoxWidth = m_params.boxHalfWidth - m_params.particleWorldRadius;
+        float effectiveBoxHeight = m_params.boxHalfHeight - m_params.particleWorldRadius;
+
         for (uint32_t i = 0; i < m_particles.size(); i++)
         {
             m_particles[i].velocity += (gravityVector * deltaTime);
             m_particles[i].position += (m_particles[i].velocity * deltaTime);
-            if (abs(m_particles[i].position.x) > m_params.boxHalfWidth)
+
+
+            if (abs(m_particles[i].position.x) > effectiveBoxWidth)
             {
-                m_particles[i].position.x = m_params.boxHalfWidth * glm::sign(m_particles[i].position.x);
+                m_particles[i].position.x = effectiveBoxWidth * glm::sign(m_particles[i].position.x);
                 m_particles[i].velocity.x *= -1.0f * m_params.collisionDamping;
             }
-            if (abs(m_particles[i].position.y) > m_params.boxHalfHeight)
+            if (abs(m_particles[i].position.y) > effectiveBoxHeight)
             {
-                m_particles[i].position.y = m_params.boxHalfHeight * glm::sign(m_particles[i].position.y);
+                m_particles[i].position.y = effectiveBoxHeight * glm::sign(m_particles[i].position.y);
                 m_particles[i].velocity.y *= -1.0f * m_params.collisionDamping;
             }
             m_particleVertices[i].pos = m_particles[i].position;
+            // calculate color
+            float t = glm::clamp(glm::length(m_particles[i].velocity) / m_params.maxSpeedForColor, 0.0f, 1.0f);
+            //m_particleVertices[i].color = utils::lerpColor2(t, m_params.minSpeedColor, m_params.maxSpeedColor);
+            std::vector<std::pair<float, glm::vec3>> colors{
+                {m_params.colorPoints.c1Point, m_params.colorPoints.color1},
+                {m_params.colorPoints.c2Point, m_params.colorPoints.color2},
+                {m_params.colorPoints.c3Point, m_params.colorPoints.color3},
+                {m_params.colorPoints.c4Point, m_params.colorPoints.color4}
+            };
+            m_particleVertices[i].color = utils::lerpColorVector(t, colors);
         }
 
         void* data = m_particleVertexBuffer->map();
@@ -104,7 +121,7 @@ void FluidSimulator::draw(VkCommandBuffer commandBuffer)
 
     // ----- CONTAINER ------
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, m_boxPipeline->getGraphicsPipeline());
-    vkCmdSetLineWidth(commandBuffer, 5.0f);
+    vkCmdSetLineWidth(commandBuffer, 1.0f);
     vBuff = m_boxVertexBuffer->getVkBuffer();
     VkBuffer iBuff = m_boxIndexBuffer->getVkBuffer();
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
@@ -119,16 +136,32 @@ void FluidSimulator::initializeParticles()
     m_particles.resize(m_params.paricleCount);
     m_particleVertices.resize(m_params.paricleCount);
 
+    float effectiveBoxWidth = m_params.boxHalfWidth - m_params.particleWorldRadius;
+    float effectiveBoxHeight = m_params.boxHalfHeight - m_params.particleWorldRadius;
+
     for (uint32_t i = 0; i < m_params.paricleCount; i++)
     {
         Particle p{};
-        float step = (m_params.boxHalfWidth * 2) / (m_params.paricleCount + 1);
-        p.position = glm::vec3(-m_params.boxHalfWidth + (step * (i + 1)), 0.0f, 0.0f);
+        /*float step = (m_params.boxHalfWidth * 2) / (m_params.paricleCount + 1);
+        p.position = glm::vec3(-m_params.boxHalfWidth + (step * (i + 1)), 0.0f, 0.0f);*/
+        float xpos = utils::randomFloat(-effectiveBoxWidth, effectiveBoxWidth);
+        float ypos = utils::randomFloat(-effectiveBoxHeight, effectiveBoxHeight);
+        p.position = glm::vec3(xpos, ypos, 0.0f);
         p.velocity = glm::vec3(0.0f, 0.0f, 0.0f);
         m_particles[i] = p;
 
         m_particleVertices[i].pos = p.position;
-        m_particleVertices[i].color = glm::vec3(0.2, 0.6, 1.0);
+
+        float t = glm::clamp(glm::length(m_particles[i].velocity) / m_params.maxSpeedForColor, 0.0f, 1.0f);
+        //m_particleVertices[i].color = utils::lerpColor2(t, m_params.minSpeedColor, m_params.maxSpeedColor);
+        //m_particleVertices[i].color = glm::vec3(0.2, 0.6, 1.0);
+        std::vector<std::pair<float, glm::vec3>> colors{
+                {m_params.colorPoints.c1Point, m_params.colorPoints.color1},
+                {m_params.colorPoints.c2Point, m_params.colorPoints.color2},
+                {m_params.colorPoints.c3Point, m_params.colorPoints.color3},
+                {m_params.colorPoints.c4Point, m_params.colorPoints.color4}
+        };
+        m_particleVertices[i].color = utils::lerpColorVector(t, colors);
     }
 
     void* data = m_particleVertexBuffer->map();
@@ -147,3 +180,4 @@ void FluidSimulator::updateContainerBuffer()
     memcpy(boxdata, m_boxVertices.data(), m_boxVertices.size() * sizeof(Vertex));
     m_boxVertexBuffer->unmap();
 }
+

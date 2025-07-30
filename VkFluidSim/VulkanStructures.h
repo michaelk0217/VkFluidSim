@@ -14,6 +14,7 @@
 #include <string>
 #include <memory>
 
+
 struct Vertex {
 	glm::vec3 pos;
 	glm::vec3 color;
@@ -80,6 +81,9 @@ struct ShaderData {
 	alignas(16) glm::mat4 modelMatrix;
 	alignas(16) glm::mat4 viewMatrix;
 	alignas(16) glm::mat4 projectionMatrix;
+	float viewportHeight;
+	float fovy;
+	float particleWorldRadius;
 };
 
 struct Particle {
@@ -88,15 +92,34 @@ struct Particle {
 };
 
 
+struct GradientColorsPoints
+{
+	glm::vec3 color1{ 0.2f, 0.6f, 1.0f };
+	float c1Point = 0.0f;
+	glm::vec3 color2{ 0.3f, 1.0f, 0.5f };
+	float c2Point = 0.5f;
+	glm::vec3 color3{ 1.0f, 1.0f, 0.25f };
+	float c3Point = 0.75f;
+	glm::vec3 color4{ 1.0f, 0.36f, 0.36f };
+	float c4Point = 1.0f;
+};
+
 struct FluidSimParameters
 {
-	uint32_t paricleCount = 100;
+	uint32_t paricleCount = 1000;
 	float collisionDamping = 0.8f;
-	float boxHalfWidth = 1.0f;
+	float boxHalfWidth = 1.6f;
 	float boxHalfHeight = 1.0f;
+	float particleWorldRadius = 0.01f;
 	bool runSimulation = false;
 	bool resetSimulation = false;
+	float maxSpeedForColor = 2.0f;
+	/*glm::vec3 minSpeedColor{ 0.2f, 0.6f, 1.0f };
+	glm::vec3 maxSpeedColor{ 1.0f, 0.0f, 0.0f };*/
+	GradientColorsPoints colorPoints;
 };
+
+
 
 struct UiContextPacket {
 	float& deltaTime;

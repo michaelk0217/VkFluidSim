@@ -38,6 +38,8 @@ private:
 	VulkanSwapChain& m_swapChain;
 	VkDescriptorPool m_descriptorPool = VK_NULL_HANDLE;
 
+	bool ShowUint32Input(const char* label, uint32_t& value, uint32_t min_value, uint32_t max_value);
 	
+	bool ShowColorPickerRGB(const char* label, glm::vec3& color);
 };
 

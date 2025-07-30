@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 #include <stdio.h>
+#include <algorithm>
 
 #include "Window.h"
 #include "VulkanDevices.h"
@@ -134,12 +135,12 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
     ImGui::End();
     ImGui::PopStyleColor();
 
-
-    ImGui::SetNextWindowSize(ImVec2(300, 200), ImGuiCond_Once);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.1f, 0.1f, 0.12f, 0.75f));
+    ImGui::SetNextWindowSize(ImVec2(400, 500), ImGuiCond_Once);
     if (ImGui::Begin("Simulation")) {
 
-        ImGui::Text("Controls");
         ImGui::Separator();
+        ImGui::Text("Controls");
         if (uiPacket.parameters.runSimulation) {
             uiPacket.parameters.runSimulation = !ImGui::Button("Stop");
         }
@@ -150,23 +151,37 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
             uiPacket.parameters.resetSimulation = ImGui::Button("Reset");
         }
 
-
-        ImGui::Text("Border Dimensions");
         ImGui::Separator();
+        ImGui::Text("Particle Behavior");
+        ImGui::DragFloat("Particle Size", &uiPacket.parameters.particleWorldRadius, 0.005f, 0.001f, 0.1f);
+        ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
+        if (!uiPacket.parameters.runSimulation)
+        {
+            if (ShowUint32Input("Particle Count", uiPacket.parameters.paricleCount, 0, 7000))
+            {
+                uiPacket.parameters.resetSimulation = true;
+            }
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Color Mapping");
+        ImGui::DragFloat("Max Speed", &uiPacket.parameters.maxSpeedForColor, 0.1f, 0.1f, 50.0f);
+        ImGui::Separator();
+        ShowColorPickerRGB("Color 1 (min)", uiPacket.parameters.colorPoints.color1);
+        ShowColorPickerRGB("Color 2", uiPacket.parameters.colorPoints.color2);
+        ShowColorPickerRGB("Color 3", uiPacket.parameters.colorPoints.color3);
+        ShowColorPickerRGB("Color 4 (max)", uiPacket.parameters.colorPoints.color4);
+
+        ImGui::Separator();
+        ImGui::Text("Border Dimensions");
         ImGui::DragFloat("Width", &uiPacket.parameters.boxHalfWidth, 0.01f, 0.1f, 4.0f);
         ImGui::DragFloat("Height", &uiPacket.parameters.boxHalfHeight, 0.01f, 0.1f, 4.0f);
         ImGui::Separator();
-        ImGui::Text("Particle Behavior");
-        ImGui::Separator();
-        ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
-
-
-        //if (ImGui::Button("Crash the App")) {
-        //    // For testing purposes, of course
-        //    *(int*)0 = 0;
-        //}
+        
+           
     }
     ImGui::End();
+    ImGui::PopStyleColor();
 }
 
 void ImGuiManager::render(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t width, uint32_t height)
@@ -190,5 +205,34 @@ void ImGuiManager::render(VkCommandBuffer commandBuffer, uint32_t imageIndex, ui
     vkCmdBeginRendering(commandBuffer, &renderingInfo);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
     vkCmdEndRendering(commandBuffer);
+}
+
+bool ImGuiManager::ShowUint32Input(const char* label, uint32_t& value, uint32_t min_value, uint32_t max_value)
+{
+    int temp_value = static_cast<int>(value);
+
+    if (ImGui::InputInt(label, &temp_value, 1, 100)) {
+        temp_value = std::clamp(temp_value, static_cast<int>(min_value), static_cast<int>(max_value));
+        if (temp_value < 0) {
+            temp_value = 0; 
+        }
+        value = static_cast<uint32_t>(temp_value); 
+        
+        return true;
+    }
+    return false;
+}
+
+bool ImGuiManager::ShowColorPickerRGB(const char* label, glm::vec3& color)
+{
+    float tempColor[3] = { color.r, color.g, color.b };
+    if (ImGui::ColorEdit3(label, tempColor, ImGuiColorEditFlags_DisplayRGB))
+    {
+        color.r = tempColor[0];
+        color.g = tempColor[1];
+        color.b = tempColor[2];
+        return true;
+    }
+    return false;
 }
 

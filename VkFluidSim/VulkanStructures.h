@@ -94,13 +94,13 @@ struct Particle {
 
 struct GradientColorsPoints
 {
-	glm::vec3 color1{ 0.2f, 0.6f, 1.0f };
+	glm::vec3 color1{ 0.0f, 0.0f, 1.0f };
 	float c1Point = 0.0f;
-	glm::vec3 color2{ 0.3f, 1.0f, 0.5f };
+	glm::vec3 color2{ 0.0f, 1.0f, 0.0f };
 	float c2Point = 0.5f;
-	glm::vec3 color3{ 1.0f, 1.0f, 0.25f };
+	glm::vec3 color3{ 1.0f, 1.0f, 0.0f };
 	float c3Point = 0.75f;
-	glm::vec3 color4{ 1.0f, 0.36f, 0.36f };
+	glm::vec3 color4{ 1.0f, 0.0f, 0.0f };
 	float c4Point = 1.0f;
 };
 

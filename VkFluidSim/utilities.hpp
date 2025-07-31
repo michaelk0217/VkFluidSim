@@ -55,39 +55,4 @@ namespace utils
 		return colorStops[0].second;
 	}
 
-	float SmoothingKernal(float radius, float dst)
-	{
-		float volume = glm::pi<float>() * std::powf(radius, 8) / 4.0f;
-		float value = std::max(0.0f, radius * radius - dst * dst);
-		return value * value * value / volume;
-	}
-
-	float CaculateDensity(glm::vec3 samplePoint, float smoothingRadius, std::vector<Particle> particles)
-	{
-		float density = 0;
-		const float mass = 1;
-
-		for (auto p : particles)
-		{
-			float dst = glm::length(p.position - samplePoint);
-			float influence = SmoothingKernal(smoothingRadius, dst);
-			density += mass * influence;
-		}
-
-		return density;
-	}
-
-	/*float CalculateProperty(glm::vec3 samplePoint, float smoothingRadius, std::vector<Particle> particles)
-	{
-		float property;
-
-		for (int i = 0; i < particles.size(); i++)
-		{
-			float dst = glm::length(particles[i].position - samplePoint);
-			float influence = SmoothingKernal(smoothingRadius, dst);
-			float density = CaculateDensity(particles[i].position, smoothingRadius, particles);
-			property += particleProperties[i]
-		}
-	}*/
-
 }

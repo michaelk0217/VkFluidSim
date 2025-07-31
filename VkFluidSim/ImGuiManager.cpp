@@ -157,11 +157,18 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
         if (!uiPacket.parameters.runSimulation)
         {
-            if (ShowUint32Input("Particle Count", uiPacket.parameters.paricleCount, 0, 7000))
+            if (ShowUint32Input("Particle Count", uiPacket.parameters.paricleCount, 0, 10000))
             {
                 uiPacket.parameters.resetSimulation = true;
             }
         }
+        ImGui::DragFloat("Mass", &uiPacket.parameters.mass, 0.01f, 0.0f, 5.0f);
+        ImGui::DragFloat("Gravity", &uiPacket.parameters.gravity, 0.01f, 0.0f, 9.0f);
+        ImGui::DragFloat("Smoothing Radius", &uiPacket.parameters.smoothingRadius, 0.01f, 0.0f, 5.0f);
+        ImGui::DragFloat("Target Density", &uiPacket.parameters.targetDensity, 0.01f,1.0f, 10.0f);
+        ImGui::DragFloat("Pressure Multiplier", &uiPacket.parameters.pressureMultiplier, 0.01f, 0.0f, 100.0f);
+
+
 
         ImGui::Separator();
         ImGui::Text("Color Mapping");
@@ -174,8 +181,8 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
 
         ImGui::Separator();
         ImGui::Text("Border Dimensions");
-        ImGui::DragFloat("Width", &uiPacket.parameters.boxHalfWidth, 0.01f, 0.1f, 4.0f);
-        ImGui::DragFloat("Height", &uiPacket.parameters.boxHalfHeight, 0.01f, 0.1f, 4.0f);
+        ImGui::DragFloat("Width", &uiPacket.parameters.boxHalfWidth, 0.01f, 0.1f, 30.0f);
+        ImGui::DragFloat("Height", &uiPacket.parameters.boxHalfHeight, 0.01f, 0.1f, 30.0f);
         ImGui::Separator();
         
            

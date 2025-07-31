@@ -64,27 +64,11 @@ void FluidSimulator::update(float deltaTime)
     updateContainerBuffer();
     if (m_params.runSimulation)
     {
-        glm::vec3 gravityVector(0.0f, 0.9f, 0.0f);
-
-        float effectiveBoxWidth = m_params.boxHalfWidth - m_params.particleWorldRadius;
-        float effectiveBoxHeight = m_params.boxHalfHeight - m_params.particleWorldRadius;
+        SimulationStep(deltaTime);
 
         for (uint32_t i = 0; i < m_particles.size(); i++)
         {
-            m_particles[i].velocity += (gravityVector * deltaTime);
-            m_particles[i].position += (m_particles[i].velocity * deltaTime);
 
-
-            if (abs(m_particles[i].position.x) > effectiveBoxWidth)
-            {
-                m_particles[i].position.x = effectiveBoxWidth * glm::sign(m_particles[i].position.x);
-                m_particles[i].velocity.x *= -1.0f * m_params.collisionDamping;
-            }
-            if (abs(m_particles[i].position.y) > effectiveBoxHeight)
-            {
-                m_particles[i].position.y = effectiveBoxHeight * glm::sign(m_particles[i].position.y);
-                m_particles[i].velocity.y *= -1.0f * m_params.collisionDamping;
-            }
             m_particleVertices[i].pos = m_particles[i].position;
             // calculate color
             float t = glm::clamp(glm::length(m_particles[i].velocity) / m_params.maxSpeedForColor, 0.0f, 1.0f);

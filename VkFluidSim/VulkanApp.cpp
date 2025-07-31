@@ -94,7 +94,7 @@ void VulkanApp::initVulkan()
 
     camera = std::make_unique<Camera>();
     camera->type = Camera::CameraType::lookat;
-    camera->setPosition(glm::vec3(0.0f, 0.0f, -2.5f));
+    camera->setPosition(glm::vec3(0.0f, 0.0f, -15.0f));
     camera->setRotation(glm::vec3(0.0f));
     camera->setPerspective(60.0f, (float)width / (float)height, 1.0f, 500.0f);
 

@@ -57,16 +57,12 @@ private:
 	std::unique_ptr<VulkanIndexBuffer> m_boxIndexBuffer;
 
 	void initializeParticles();
+	void populateParticlesRandom();
+	void populateParticlesSquare();
 	void updateContainerBuffer();
 
 
-	// calculation functions
-
-	//float smoothingRadius = 1.0f;
-	//float mass = 1.0f;
-	//float targetDensity;
-	//float pressureMultiplier;
-	//float gravity = 0;
+	
 
 	void ResolveContainerCollisions(int particleIndex)
 	{
@@ -126,9 +122,10 @@ private:
 
 	void UpdateDensities()
 	{
-		for (auto& p : m_particles)
+		for (int i = 0; i < m_params.particleCount; i++)
 		{
-			p.density = CalculateDensity(p.position);
+			//m_particles[i].density = CalculateDensity(m_particles[i].position);
+			m_particles[i].density = CalculateDensityWithinRadius(m_particles[i].position);
 		}
 	}
 
@@ -160,7 +157,7 @@ private:
 
 			float slope = SmoothingKernalDerivative(dst, m_params.smoothingRadius);
 			float density = m_particles[i].density;
-			float sharedPressure = CalculateSharedPressure(density, m_particles[i].density);
+			float sharedPressure = CalculateSharedPressure(density, m_particles[particleIndex].density);
 			pressureForce += sharedPressure * dir * slope * m_params.mass / density;
 		}
 
@@ -176,25 +173,239 @@ private:
 		return pressure;
 	}
 
+	std::pair<uint32_t, uint32_t> PositionToCellCoord2D(glm::vec3 particleLoc, float radius)
+	{
+
+		//uint32_t numWidthCells = static_cast<uint32_t>(std::floor(m_params.boxHalfWidth / radius));
+		//uint32_t numHeightCells = static_cast<uint32_t>(std::floor(m_params.boxHalfHeight / radius));
+
+		uint32_t cellX = static_cast<uint32_t>(std::floor(particleLoc.x / (radius * 2)));
+		uint32_t cellY = static_cast<uint32_t>(std::floor(particleLoc.y / (radius * 2)));
+
+		//return (cellY * numWidthCells) + cellX;
+		return std::pair(cellX, cellY);
+	}
+
+	// ------ spacial lookup ---------
+	std::vector<std::pair<uint32_t, uint32_t>> spacialLookup; // first: i, second: cellKey
+	std::vector<uint32_t> startIndices;
+	static const uint32_t hashK1 = 15823;
+	static const uint32_t hashK2 = 9737333;
+
+	void UpdateSpacialLookup()
+	{
+		spacialLookup.clear();
+		spacialLookup.resize(m_params.particleCount);
+
+		startIndices.clear();
+		startIndices.resize(m_params.particleCount);
+
+		for (uint32_t i = 0; i < m_params.particleCount; i++)
+		{
+			std::pair<uint32_t, uint32_t> cellCoord = PositionToCellCoord2D(m_particles[i].position, m_params.smoothingRadius);
+			uint32_t cellKey = GetKeyFromHash(HashCell(cellCoord), static_cast<uint32_t>(spacialLookup.size()));
+			spacialLookup[i] = std::pair<uint32_t, uint32_t>(i, cellKey);
+			startIndices[i] = UINT32_MAX;
+		}
+
+		std::sort(spacialLookup.begin(), spacialLookup.end(),
+			[](std::pair<uint32_t, uint32_t> a, std::pair<uint32_t, uint32_t> b) {
+				return a.second < b.second;
+			}
+		);
+
+		for (uint32_t i = 0; i < m_params.particleCount; i++)
+		{
+			uint32_t key = spacialLookup[i].second;
+			uint32_t keyPrev = i == 0 ? UINT32_MAX : spacialLookup[i - 1].second;
+			if (key != keyPrev)
+			{
+				startIndices[key] = i;
+			}
+		}
+	}
+
+	static uint32_t HashCell(std::pair<uint32_t, uint32_t> cell)
+	{
+		uint32_t a = cell.first * hashK1;
+		uint32_t b = cell.second * hashK2;
+		return (a + b);
+	}
+
+	static uint32_t GetKeyFromHash(uint32_t hash, uint32_t tableSize)
+	{
+		return hash % tableSize;
+
+	}
+
+	float CalculateDensityWithinRadius(glm::vec3 samplePoint)
+	{
+		float density = 0;
+
+		//std::pair<uint32_t, uint32_t> cellCoord = PositionToCellCoord2D(m_particles[samplePointIndex].position, m_params.smoothingRadius);
+		std::pair<uint32_t, uint32_t> cellCoord = PositionToCellCoord2D(samplePoint, m_params.smoothingRadius);
+
+		float sqrRadius = m_params.smoothingRadius * m_params.smoothingRadius;
+		
+		std::vector<std::pair<int, int>> cellOffsets = {
+			{-1, -1}, {0, -1}, {1, -1},
+			{-1,  0}, {0,  0}, {1,  0},
+			{-1,  1}, {0,  1}, {1,  1}
+		};
+
+		for (auto& offset: cellOffsets)
+		{
+			uint32_t key = GetKeyFromHash(HashCell(std::pair<uint32_t, uint32_t>(cellCoord.first + offset.first, cellCoord.second + offset.second)), spacialLookup.size());
+			int cellStartIndex = startIndices[key];
+
+			for (int i = cellStartIndex; i < spacialLookup.size(); i++)
+			{
+				if (spacialLookup[i].second != key) break;
+
+				int particleIndex = spacialLookup[i].first;
+				//float dst = glm::length(m_particles[particleIndex].position - m_particles[samplePointIndex].position);
+				float dst = glm::length(m_particles[particleIndex].position - samplePoint);
+
+				float sqrDst = dst * dst;
+
+				// test if point is inside the radius
+				if (sqrDst <= sqrRadius)
+				{
+					float influence = SmoothingKernal(m_params.smoothingRadius, dst);
+					density += m_params.mass * influence;
+				}
+			}
+		}
+		return density;
+	}
+
+	glm::vec3 CalculatePressureForceWithinRadius(int particleIndex)
+	{
+		glm::vec3 pressureForce = glm::vec3(0.0f);
+		glm::vec3 samplePoint = m_particles[particleIndex].position;
+		std::pair<uint32_t, uint32_t> centerCell = PositionToCellCoord2D(samplePoint, m_params.smoothingRadius);
+
+		std::vector<std::pair<int, int>> cellOffsets = {
+			{-1, -1}, {0, -1}, {1, -1},
+			{-1,  0}, {0,  0}, {1,  0},
+			{-1,  1}, {0,  1}, {1,  1}
+		};
+
+		for (auto& offset : cellOffsets)
+		{
+			uint32_t key = GetKeyFromHash(HashCell({ centerCell.first + offset.first, centerCell.second + offset.second }), spacialLookup.size());
+			int cellStartIndex = startIndices[key];
+
+			if (cellStartIndex == UINT32_MAX) continue;
+
+			for (int i = cellStartIndex; i < spacialLookup.size(); i++)
+			{
+				if (spacialLookup[i].second != key) break;
+
+				int neighborIndex = spacialLookup[i].first;
+				if (neighborIndex == particleIndex) continue;
+
+				glm::vec3 offsetToNeighbor = m_particles[neighborIndex].position - samplePoint;
+				float dst = glm::length(offsetToNeighbor);
+
+				if (dst < m_params.smoothingRadius)
+				{
+					glm::vec3 dir = dst == 0 ? GetRamdomDirXY() : offsetToNeighbor / dst;
+					float slope = SmoothingKernalDerivative(dst, m_params.smoothingRadius);
+					float sharedPressure = CalculateSharedPressure(m_particles[particleIndex].density, m_particles[neighborIndex].density);
+
+					if (m_particles[neighborIndex].density > 0)
+					{
+						pressureForce += sharedPressure * dir * slope * m_params.mass / m_particles[neighborIndex].density;
+					}
+				}
+			}
+		}
+		return pressureForce;
+	}
+
+	//void ForeachWithinRadius(int samplePointIndex)
+	//{
+	//	std::pair<uint32_t, uint32_t> cellCoord = PositionToCellCoord2D(m_particles[samplePointIndex].position, m_params.smoothingRadius);
+	//	float sqrRadius = m_params.smoothingRadius * m_params.smoothingRadius;
+
+	//	std::vector<std::pair<int, int>> cellOffsets = {
+	//		{-1, -1}, {0, -1}, {1, -1},
+	//		{-1,  0}, {0,  0}, {1,  0},
+	//		{-1,  1}, {0,  1}, {1,  1}
+	//	};
+
+	//	for (auto& offset : cellOffsets)
+	//	{
+	//		uint32_t key = GetKeyFromHash(HashCell(std::pair<uint32_t, uint32_t>(cellCoord.first + offset.first, cellCoord.second + offset.second)), spacialLookup.size());
+	//		int cellStartIndex = startIndices[key];
+
+	//		for (int i = cellStartIndex; i < spacialLookup.size(); i++)
+	//		{
+	//			if (spacialLookup[i].second != key) break;
+
+	//			int particleIndex = spacialLookup[i].first;
+	//			float dst = glm::length(m_particles[particleIndex].position - m_particles[samplePointIndex].position);
+	//			float sqrDst = dst * dst;
+
+	//			// test if point is inside the radius
+	//			if (sqrDst <= sqrRadius)
+	//			{
+	//				// do callback
+	//			}
+	//		}
+	//	}
+	//}
+
+
+
 	void SimulationStep(float deltaTime)
 	{
-		UpdateDensities();
+		
+		//UpdateDensities();
 
-		// Second, calculate forces and update velocities
-		for (int i = 0; i < m_particles.size(); i++)
+		//// Second, calculate forces and update velocities
+		//for (int i = 0; i < m_particles.size(); i++)
+		//{
+		//	m_particles[i].velocity += glm::vec3(0.0f, 1.0f, 0.0f) * m_params.gravity * deltaTime;
+
+		//	glm::vec3 pressureForce = CalculatePressureForceWithinRadius(i);
+		//	//glm::vec3 pressureForce = CalculatePressureForce(i);
+
+		//	if (m_particles[i].density > 0)
+		//	{
+		//		glm::vec3 pressureAcceleration = pressureForce / m_particles[i].density;
+		//		m_particles[i].velocity += pressureAcceleration * deltaTime;
+		//	}
+		//}
+
+		// apply gravity and predit next positions
+		for (int i = 0; i < m_params.particleCount; i++)
 		{
 			m_particles[i].velocity += glm::vec3(0.0f, 1.0f, 0.0f) * m_params.gravity * deltaTime;
+			m_particles[i].predictedPosition = m_particles[i].position + m_particles[i].velocity * deltaTime;
+		}
 
-			glm::vec3 pressureForce = CalculatePressureForce(i);
+		UpdateSpacialLookup();
+		
+		// calculate densities
+		for (int i = 0; i < m_params.particleCount; i++)
+		{
+			m_particles[i].density = CalculateDensityWithinRadius(m_particles[i].predictedPosition);
+		}
 
+		// calculate and apply pressure forces
+		for (int i = 0; i < m_params.particleCount; i++)
+		{
+			glm::vec3 pressureForce = CalculatePressureForceWithinRadius(i);
 			if (m_particles[i].density > 0)
 			{
 				glm::vec3 pressureAcceleration = pressureForce / m_particles[i].density;
-				m_particles[i].velocity = pressureAcceleration * deltaTime;
+				m_particles[i].velocity += pressureAcceleration * deltaTime;
 			}
 		}
 
-		// Third, update positions and handle collisions
+		//  update positions and handle collisions
 		for (int i = 0; i < m_particles.size(); i++)
 		{
 			m_particles[i].position += m_particles[i].velocity * deltaTime;

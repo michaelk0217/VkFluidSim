@@ -80,6 +80,7 @@ void FluidSimulator::update(float deltaTime)
                 {m_params.colorPoints.c4Point, m_params.colorPoints.color4}
             };
             m_particleVertices[i].color = utils::lerpColorVector(t, colors);
+            //m_particleVertices[i].color = utils::lerpColor2(t, m_params.colorPoints.color1, m_params.colorPoints.color2);
         }
 
         void* data = m_particleVertexBuffer->map();
@@ -117,13 +118,25 @@ void FluidSimulator::initializeParticles()
 {
     m_particles.clear();
     m_particleVertices.clear();
-    m_particles.resize(m_params.paricleCount);
-    m_particleVertices.resize(m_params.paricleCount);
+    m_particles.resize(m_params.particleCount);
+    m_particleVertices.resize(m_params.particleCount);
 
+    
+    //populateParticlesRandom();
+    populateParticlesSquare();
+    
+
+    void* data = m_particleVertexBuffer->map();
+    memcpy(data, m_particleVertices.data(), m_particleVertices.size() * sizeof(Vertex));
+    m_particleVertexBuffer->unmap();
+}
+
+void FluidSimulator::populateParticlesRandom()
+{
     float effectiveBoxWidth = m_params.boxHalfWidth - m_params.particleWorldRadius;
     float effectiveBoxHeight = m_params.boxHalfHeight - m_params.particleWorldRadius;
 
-    for (uint32_t i = 0; i < m_params.paricleCount; i++)
+    for (uint32_t i = 0; i < m_params.particleCount; i++)
     {
         Particle p{};
         /*float step = (m_params.boxHalfWidth * 2) / (m_params.paricleCount + 1);
@@ -137,21 +150,40 @@ void FluidSimulator::initializeParticles()
         m_particleVertices[i].pos = p.position;
 
         float t = glm::clamp(glm::length(m_particles[i].velocity) / m_params.maxSpeedForColor, 0.0f, 1.0f);
-        //m_particleVertices[i].color = utils::lerpColor2(t, m_params.minSpeedColor, m_params.maxSpeedColor);
-        //m_particleVertices[i].color = glm::vec3(0.2, 0.6, 1.0);
-        std::vector<std::pair<float, glm::vec3>> colors{
+        m_particleVertices[i].color = m_params.colorPoints.color1;
+        /*std::vector<std::pair<float, glm::vec3>> colors{
                 {m_params.colorPoints.c1Point, m_params.colorPoints.color1},
                 {m_params.colorPoints.c2Point, m_params.colorPoints.color2},
                 {m_params.colorPoints.c3Point, m_params.colorPoints.color3},
                 {m_params.colorPoints.c4Point, m_params.colorPoints.color4}
         };
-        m_particleVertices[i].color = utils::lerpColorVector(t, colors);
+        m_particleVertices[i].color = utils::lerpColorVector(t, colors);*/
+        //m_particleVertices[i].color = utils::lerpColor2(t, m_params.colorPoints.color1, m_params.colorPoints.color2);
     }
-
-    void* data = m_particleVertexBuffer->map();
-    memcpy(data, m_particleVertices.data(), m_particleVertices.size() * sizeof(Vertex));
-    m_particleVertexBuffer->unmap();
 }
+
+void FluidSimulator::populateParticlesSquare()
+{
+    int particlesPerRow = static_cast<int>(std::sqrt(m_params.particleCount));
+    int particlesPerCol = (m_params.particleCount - 1) / particlesPerRow + 1;
+    float spacing = m_params.particleWorldRadius * 4.0f;
+
+    for (uint32_t i = 0; i < m_params.particleCount; i++)
+    {
+        int col = i % particlesPerRow;
+        int row = i / particlesPerRow;
+
+        Particle p{};
+        p.position.x = (col - particlesPerRow / 2.0f) * spacing;
+        p.position.y = (row - particlesPerCol / 2.0f) * spacing;
+        p.velocity = glm::vec3(0.0f);
+        m_particles[i] = p;
+        m_particleVertices[i].pos = p.position;
+        m_particleVertices[i].color = m_params.colorPoints.color1;
+    }
+}
+
+
 
 void FluidSimulator::updateContainerBuffer()
 {

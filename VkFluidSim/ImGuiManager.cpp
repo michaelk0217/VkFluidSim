@@ -157,7 +157,7 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
         if (!uiPacket.parameters.runSimulation)
         {
-            if (ShowUint32Input("Particle Count", uiPacket.parameters.paricleCount, 0, 10000))
+            if (ShowUint32Input("Particle Count", uiPacket.parameters.particleCount, 0, 10000))
             {
                 uiPacket.parameters.resetSimulation = true;
             }
@@ -166,7 +166,7 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Gravity", &uiPacket.parameters.gravity, 0.01f, 0.0f, 9.0f);
         ImGui::DragFloat("Smoothing Radius", &uiPacket.parameters.smoothingRadius, 0.01f, 0.0f, 5.0f);
         ImGui::DragFloat("Target Density", &uiPacket.parameters.targetDensity, 0.01f,1.0f, 10.0f);
-        ImGui::DragFloat("Pressure Multiplier", &uiPacket.parameters.pressureMultiplier, 0.01f, 0.0f, 100.0f);
+        ImGui::DragFloat("Pressure Multiplier", &uiPacket.parameters.pressureMultiplier, 0.01f, 0.0f, 500.0f);
 
 
 
@@ -175,7 +175,7 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Max Speed", &uiPacket.parameters.maxSpeedForColor, 0.1f, 0.1f, 50.0f);
         ImGui::Separator();
         ShowColorPickerRGB("Color 1 (min)", uiPacket.parameters.colorPoints.color1);
-        ShowColorPickerRGB("Color 2", uiPacket.parameters.colorPoints.color2);
+        ShowColorPickerRGB("Color 2 (max)", uiPacket.parameters.colorPoints.color2);
         ShowColorPickerRGB("Color 3", uiPacket.parameters.colorPoints.color3);
         ShowColorPickerRGB("Color 4 (max)", uiPacket.parameters.colorPoints.color4);
 

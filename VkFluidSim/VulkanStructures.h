@@ -88,6 +88,7 @@ struct ShaderData {
 
 struct Particle {
 	glm::vec3 position{ 0.0f, 0.0f, 0.0f };
+	glm::vec3 predictedPosition{ 0.0f, 0.0f, 0.0f };
 	glm::vec3 velocity{ 0.0f, 0.0f, 0.0f };
 	float density = 0;
 };
@@ -107,7 +108,7 @@ struct GradientColorsPoints
 
 struct FluidSimParameters
 {
-	uint32_t paricleCount = 500;
+	uint32_t particleCount = 500;
 	float collisionDamping = 0.8f;
 	float boxHalfWidth = 16.0f;
 	float boxHalfHeight = 10.0f;

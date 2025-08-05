@@ -15,8 +15,12 @@ public:
 		VkDevice device,
 		VkDescriptorPool descriptorPool,
 		VkDescriptorSetLayout descriptorSetLayout,
-		uint32_t numFrames,
-		const std::vector<VkBuffer> uniformBuffers);
+		uint32_t numFrames
+	);
+
+	void updateGraphicsDescriptorSet(uint32_t currentFrameIndex, VkBuffer particleReadBuffer, VkBuffer uboBuffer);
+
+	void updateGraphicsBoxDescriptorSet(std::vector<VkBuffer> uboBuffers);
 
 	std::vector<VkDescriptorSet> getDescriptorSets() const;
 	

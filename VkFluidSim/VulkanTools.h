@@ -90,6 +90,26 @@ namespace vks
 			VkPipelineStageFlags dstStageMask,
 			VkImageSubresourceRange subresourceRange);
 
+		/** @brief Insert a buffer memory barrier into the command buffer */
+		void insertBufferMemoryBarrier(
+			VkCommandBuffer cmdbuffer,
+			VkAccessFlags srcAccessMask,
+			VkAccessFlags dstAccessMask,
+			VkBuffer buffer,
+			VkDeviceSize offset,
+			VkDeviceSize size,
+			VkPipelineStageFlags srcStageMask,
+			VkPipelineStageFlags dstStageMask);
+
+		/** @brief insert Sync2 Memory barrier into command buffer */
+		void insertMemoryBarrier2(
+			VkCommandBuffer cmdbuffer,
+			VkAccessFlags2 srcAccessMask,
+			VkAccessFlags2 dstAccessMask,
+			VkPipelineStageFlags2 srcStageMask,
+			VkPipelineStageFlags2 dstStageMask
+		);
+
 		// Display error message and exit on fatal error
 		void exitFatal(const std::string& message, int32_t exitCode);
 		void exitFatal(const std::string& message, VkResult resultCode);

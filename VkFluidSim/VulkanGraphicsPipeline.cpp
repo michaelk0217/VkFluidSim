@@ -42,15 +42,19 @@ void VulkanGraphicsPipeline::createDynamic(
 		fragShaderStageCI
 	};
 
-	auto bindingDescription = Vertex::getBindingDescription();
-	auto attribDescription = Vertex::getAttributeDescriptions();
+	/*auto bindingDescription = Vertex::getBindingDescription();
+	auto attribDescription = Vertex::getAttributeDescriptions();*/
 
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	/*vertexInputInfo.vertexBindingDescriptionCount = 1;
 	vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attribDescription.size());
 	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputInfo.pVertexAttributeDescriptions = attribDescription.data();
+	vertexInputInfo.pVertexAttributeDescriptions = attribDescription.data();*/
+	vertexInputInfo.vertexBindingDescriptionCount = 0;
+	vertexInputInfo.pVertexBindingDescriptions = nullptr;
+	vertexInputInfo.vertexAttributeDescriptionCount = 0;
+	vertexInputInfo.pVertexAttributeDescriptions = nullptr;
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI{};
 	inputAssemblyCI.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

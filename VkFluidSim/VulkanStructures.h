@@ -84,47 +84,78 @@ struct ShaderData {
 	float viewportHeight;
 	float fovy;
 	float particleWorldRadius;
+	float _padding;
 };
 
+//struct Particle {
+//	glm::vec3 position{ 0.0f, 0.0f, 0.0f };
+//	glm::vec3 predictedPosition{ 0.0f, 0.0f, 0.0f };
+//	glm::vec3 velocity{ 0.0f, 0.0f, 0.0f };
+//	float density = 0;
+//};
+
 struct Particle {
-	glm::vec3 position{ 0.0f, 0.0f, 0.0f };
-	glm::vec3 predictedPosition{ 0.0f, 0.0f, 0.0f };
-	glm::vec3 velocity{ 0.0f, 0.0f, 0.0f };
-	float density = 0;
+	alignas(16) glm::vec4 position;
+	//alignas(16) glm::vec4 predictedPosition;
+	alignas(16) glm::vec4 velocity;
+	alignas(16) glm::vec4 color;
+	float density;
+	//float pressure;
+
+	float _padding[3];
 };
 
 
 struct GradientColorsPoints
 {
 	glm::vec3 color1{ 0.0f, 0.0f, 1.0f };
-	float c1Point = 0.0f;
+	//float c1Point = 0.0f;
 	glm::vec3 color2{ 0.0f, 1.0f, 0.0f };
-	float c2Point = 0.5f;
+	//float c2Point = 0.5f;
 	glm::vec3 color3{ 1.0f, 1.0f, 0.0f };
-	float c3Point = 0.75f;
-	glm::vec3 color4{ 1.0f, 0.0f, 0.0f };
-	float c4Point = 1.0f;
+	//float c3Point = 0.75f;
+	//glm::vec3 color4{ 1.0f, 0.0f, 0.0f };
+	//float c4Point = 1.0f;
 };
 
 struct FluidSimParameters
 {
-	uint32_t particleCount = 500;
+	uint32_t particleCount = 1000;
 	float collisionDamping = 0.8f;
-	float boxHalfWidth = 16.0f;
-	float boxHalfHeight = 10.0f;
+	float boxHalfWidth = 13.0f;
+	float boxHalfHeight = 8.0f;
 	float particleWorldRadius = 0.06f;
 	bool runSimulation = false;
-	bool resetSimulation = false;
-	float maxSpeedForColor = 2.0f;
+	bool resetSimulation = true;
+	float maxSpeedForColor = 5.0f;
 	/*glm::vec3 minSpeedColor{ 0.2f, 0.6f, 1.0f };
 	glm::vec3 maxSpeedColor{ 1.0f, 0.0f, 0.0f };*/
 	GradientColorsPoints colorPoints;
 	float smoothingRadius = 1.2f;
 	float mass = 1.0f;
 	float targetDensity = 3.0f;
-	float pressureMultiplier = 10.0f;
+	float pressureMultiplier = 2.0f;
 	float gravity = 0;
 
+};
+
+struct ComputeParameters
+{
+	uint32_t particleCount;
+	float deltaTime;
+	float gravity;
+	float smoothingRadius;
+	float targetDensity;
+	float pressureMultiplier;
+	float collisionDamping;
+	float mass;
+	glm::vec2 boxHalfSize;
+	float padding[2];
+	glm::vec4 color1;
+	glm::vec4 color2;
+	glm::vec4 color3;
+	float maxSpeedForColor;
+	float padding2[3];
 };
 
 

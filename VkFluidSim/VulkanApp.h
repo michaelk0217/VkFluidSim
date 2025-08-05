@@ -48,14 +48,12 @@ private:
     std::unique_ptr<VulkanDevices> devices;
     std::unique_ptr<VulkanSwapChain> swapChain;
     std::unique_ptr<VulkanDescriptorPool> descriptorPool;
-    std::unique_ptr<VulkanDescriptorSetLayout> descriptorSetLayout;
-    std::unique_ptr<VulkanPipelineLayout> pipelineLayout;
+    
 
     std::unique_ptr<VulkanCommandPool> commandPool;
     std::unique_ptr<VulkanDepthResources> depthResourcesObj;
 
     std::unique_ptr<VulkanUniformBuffers> frameUBO;
-    std::unique_ptr<VulkanDescriptorSets> frameUboDescriptorSets;
 
     std::unique_ptr<VulkanCommandBuffers> commandBuffers;
     std::unique_ptr<VulkanSyncPrimitives> syncObj;
@@ -113,7 +111,7 @@ private:
     void initGlfwWindow();
     void initVulkan();
     void mainLoop();
-    void drawFrame();
+    void drawFrame(float deltaTime);
     void windowResize();
     void cleanUp();
     

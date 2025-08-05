@@ -1,0 +1,158 @@
+// fluid.comp
+#version 450
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;
+    vec4 velocity;
+    vec4 color;
+    float density;
+    float _padding[3];
+};
+
+// input buffer (read only)
+layout(binding = 0) buffer ParticleDataIn {  
+    Particle particlesIn[];
+};
+
+// output buffer (write-only)
+layout(binding = 1) buffer ParticleDataOut {
+    Particle particlesOut[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint particleCount;
+    float deltaTime;
+    float gravity;
+    float smoothingRadius;
+    float targetDensity;
+    float pressureMultiplier;
+    float collisionDamping;
+    float mass;
+    vec2 boxHalfSize;
+    float padding[2];
+    vec4 color1;
+    vec4 color2;
+    vec4 color3;
+    float maxSpeedForColor;
+    float padding2[3];
+} pc;
+
+const float epsilon = 0.0001;
+
+float SmoothingKernal(float radius, float dst) {
+    if (dst >= radius) return 0.0;
+    float volume = (3.14159265359 * pow(radius, 4)) / 6.0;
+    return (radius - dst) * (radius - dst) / volume;
+}
+
+float SmoothingKernalDerivative(float radius, float dst) {
+    if (dst >= radius) return 0.0;
+    float scale = 12 / (pow(radius, 4) * 3.14159265359);
+    return (dst - radius) * scale;
+}
+
+float ConvertDensityToPressure(float density) {
+    float densityError = density - pc.targetDensity;
+    float pressure = densityError * pc.pressureMultiplier;
+    return pressure;
+}
+
+float CalculateSharedPressure(float density1, float density2) {
+    float pressure1 = ConvertDensityToPressure(density1);
+    float pressure2 = ConvertDensityToPressure(density2);
+    return (pressure1 + pressure2) / 2;
+}
+
+float CalculateDensityBruteForce(vec2 samplePoint) {
+    float density = 0.0;
+    for (uint i = 0; i < pc.particleCount; i++) {
+        float dst = length(particlesIn[i].position.xy - samplePoint);
+        density += SmoothingKernal(pc.smoothingRadius, dst);
+    }
+    return density;
+}
+
+vec2 CalculatePressureForceBruteForce(uint index, float samplePointDensity) {
+    vec2 pos = particlesIn[index].position.xy;
+    
+    vec2 pressureForce = vec2(0.0);
+    for (uint i = 0; i < pc.particleCount; i++) {
+        if (i == index) continue;
+
+        vec2 offset = particlesIn[i].position.xy - pos;
+        float dst = length(offset);
+
+        if (dst < pc.smoothingRadius) {
+            vec2 dir = dst == 0.0 ? vec2(1.0, 0.0) : normalize(offset);
+
+            float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
+            float iDensity = particlesIn[i].density;
+            float sharedPressure = CalculateSharedPressure(iDensity, samplePointDensity);
+            pressureForce += sharedPressure * dir * slope * pc.mass / max(iDensity, epsilon);
+        }
+    }
+    return pressureForce;
+}
+
+
+vec4 lerpColorVector2(float t, vec4 c1, vec4 c2) {
+    return c1 * (1.0  - t) + (c2 * t);
+}
+
+vec4 lerpColorVector3(float t, vec4 c1, vec4 c2, vec4 c3) {
+    t = clamp(t, 0.0, 1.0);
+    if (t <= 0.5) {
+        return lerpColorVector2(t * 2, c1, c2);
+    } else {
+        return lerpColorVector2((t - 0.5) * 2, c2, c3);
+    }
+}
+
+
+
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= pc.particleCount) return;
+
+    vec2 pos = particlesIn[index].position.xy;
+    vec2 vel = particlesIn[index].velocity.xy;
+    vec2 predictedPosition = pos + vel * pc.deltaTime;
+
+    // todo: update to spatial grid later
+    // brute force density calculation
+    float density = CalculateDensityBruteForce(predictedPosition);
+
+    // todo: update to spatial grid later
+    // brute force pressure force calculation
+    vec2 pressureForce = CalculatePressureForceBruteForce(index, density);
+
+    // update velocity
+    vec2 pressureAcceleration = pressureForce / max(density, epsilon);
+    vel += pressureAcceleration * pc.deltaTime;
+    vel += vec2(0.0, pc.gravity) * pc.deltaTime;
+
+    // update position
+    pos += vel * pc.deltaTime;
+
+    // collision handling
+    if (abs(pos.x) > pc.boxHalfSize.x) {
+        pos.x = pc.boxHalfSize.x * sign(pos.x);
+        vel.x *= -pc.collisionDamping;
+    }
+    if (abs(pos.y) > pc.boxHalfSize.y) {
+        pos.y = pc.boxHalfSize.y * sign(pos.y);
+        vel.y *= -pc.collisionDamping;
+    }
+
+    // color
+    float t = clamp(length(vel) / pc.maxSpeedForColor, 0.0, 1.0);
+    vec4 color = lerpColorVector3(t, pc.color1, pc.color2, pc.color3);
+
+    particlesOut[index].position = vec4(pos, 0.0, 1.0);
+    particlesOut[index].velocity = vec4(vel, 0.0, 0.0);
+    particlesOut[index].color = color;
+    particlesOut[index].density = density;
+}

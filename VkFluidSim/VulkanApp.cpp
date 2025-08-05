@@ -34,28 +34,11 @@ void VulkanApp::initVulkan()
     
     descriptorPool = std::make_unique<VulkanDescriptorPool>(devices->getLogicalDevice());
     
-    descriptorSetLayout = std::make_unique<VulkanDescriptorSetLayout>(devices->getLogicalDevice());
+   /* descriptorSetLayout = std::make_unique<VulkanDescriptorSetLayout>(devices->getLogicalDevice());
     
-    pipelineLayout = std::make_unique<VulkanPipelineLayout>(devices->getLogicalDevice(), descriptorSetLayout->getDescriptorSetLayout());
+    pipelineLayout = std::make_unique<VulkanPipelineLayout>(devices->getLogicalDevice(), descriptorSetLayout->getDescriptorSetLayout());*/
     
-    /*graphicsPipeline = std::make_unique<VulkanGraphicsPipeline>();
-    graphicsPipeline->createDynamic(
-        devices->getLogicalDevice(),
-        devices->getPhysicalDevice(),
-        pipelineLayout->getPipelineLayout(),
-        swapChain->getColorFormat(),
-        "shaders/particle.vert.spv",
-        "shaders/particle.frag.spv"
-    );
-    boxGraphicsPipeline = std::make_unique <VulkanGraphicsPipeline>();
-    boxGraphicsPipeline->createLiquidBoxPipeline(
-        devices->getLogicalDevice(),
-        devices->getPhysicalDevice(),
-        pipelineLayout->getPipelineLayout(),
-        swapChain->getColorFormat(),
-        "shaders/box.vert.spv",
-        "shaders/box.frag.spv"
-    );*/
+
 
     commandPool = std::make_unique<VulkanCommandPool>(devices->getLogicalDevice(), devices->getPhysicalDevice(), surface->getSurface());
 
@@ -65,8 +48,8 @@ void VulkanApp::initVulkan()
     frameUBO = std::make_unique<VulkanUniformBuffers>();
     frameUBO->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), MAX_CONCURRENT_FRAMES, sizeof(ShaderData));
 
-    frameUboDescriptorSets = std::make_unique<VulkanDescriptorSets>();
-    frameUboDescriptorSets->create(devices->getLogicalDevice(), descriptorPool->getDescriptorPool(), descriptorSetLayout->getDescriptorSetLayout(), MAX_CONCURRENT_FRAMES, frameUBO->getBuffers());
+   /* frameUboDescriptorSets = std::make_unique<VulkanDescriptorSets>();
+    frameUboDescriptorSets->create(devices->getLogicalDevice(), descriptorPool->getDescriptorPool(), descriptorSetLayout->getDescriptorSetLayout(), MAX_CONCURRENT_FRAMES);*/
     
     commandBuffers = std::make_unique<VulkanCommandBuffers>();
     commandBuffers->create(devices->getLogicalDevice(), commandPool->getCommandPool(), MAX_CONCURRENT_FRAMES);
@@ -74,24 +57,7 @@ void VulkanApp::initVulkan()
     syncObj = std::make_unique<VulkanSyncPrimitives>();
     syncObj->create(devices->getLogicalDevice(), MAX_CONCURRENT_FRAMES, static_cast<uint32_t>(swapChain->getImageViews().size()));
 
-    //// -------- PARICLE VERTEX / INDEX BUFFERS ------------
-    //vertexBuffer = std::make_unique<VulkanVertexBuffer>();
-    ////vertexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), vertices);
-    //vertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * numParticles));
-    //indexBuffer = std::make_unique<VulkanIndexBuffer>();
-    //indexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), indices);
-
-    //// -------- CONTAINER VERTEX / INDEX BUFFERS ---------
-    //boxVertexBuffer = std::make_unique<VulkanVertexBuffer>();
-    //boxVertexBuffer->createCoherent(devices->getLogicalDevice(), devices->getPhysicalDevice(), static_cast<VkDeviceSize>(sizeof(Vertex) * boxVertices.size()));
-    //void* boxData = boxVertexBuffer->map();
-    //memcpy(boxData, boxVertices.data(), boxVertices.size() * sizeof(Vertex));
-    //boxVertexBuffer->unmap();
-    //
-    //boxIndexBuffer = std::make_unique<VulkanIndexBuffer>();
-    //boxIndexBuffer->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), boxIndices);
-
-
+  
     camera = std::make_unique<Camera>();
     camera->type = Camera::CameraType::lookat;
     camera->setPosition(glm::vec3(0.0f, 0.0f, -15.0f));
@@ -100,7 +66,14 @@ void VulkanApp::initVulkan()
 
     imguiManager = std::make_unique<ImGuiManager>(*window, *instance, *devices, *surface, *swapChain, *commandPool);
 
-    fluidSimulator = std::make_unique<FluidSimulator>(*devices, pipelineLayout->getPipelineLayout(), commandPool->getCommandPool(), swapChain->getColorFormat());
+    fluidSimulator = std::make_unique<FluidSimulator>(
+        *devices, 
+        commandPool->getCommandPool(), 
+        swapChain->getColorFormat(), 
+        descriptorPool->getDescriptorPool(),
+        frameUBO->getBuffers()
+        //*frameUboDescriptorSets
+    );
 }
 
 void VulkanApp::mainLoop()
@@ -120,12 +93,6 @@ void VulkanApp::mainLoop()
 
         update_frame_history(1.0f / deltaTime);
 
-       /* if (resetSim)
-        {
-            initializeParticles(numParticles);
-            resetSim = false;
-        }*/
-
         imguiManager->newFrame();
         auto& simParams = fluidSimulator->getParameters();
         UiContextPacket uiPacket{ 
@@ -135,18 +102,11 @@ void VulkanApp::mainLoop()
         };
 
         imguiManager->buildUI(uiPacket);
-
-       /* updateContainer();
-        if (runSim)
-        {
-            updateParticles(deltaTime);
-        }*/
-        fluidSimulator->update(deltaTime);
-        drawFrame();
+        drawFrame(deltaTime);
     }
 }
 
-void VulkanApp::drawFrame()
+void VulkanApp::drawFrame(float deltaTime)
 {
     vkWaitForFences(devices->getLogicalDevice(), 1, &syncObj->waitFences[currentFrame], VK_TRUE, UINT64_MAX);
     VK_CHECK_RESULT(vkResetFences(devices->getLogicalDevice(), 1, &syncObj->waitFences[currentFrame]));
@@ -179,6 +139,29 @@ void VulkanApp::drawFrame()
     VkCommandBufferBeginInfo cmdBufInfo = vks::initializers::commandBufferBeginInfo();
     const VkCommandBuffer commandBuffer = commandBuffers->getCommandBuffer(currentFrame);
     VK_CHECK_RESULT(vkBeginCommandBuffer(commandBuffer, &cmdBufInfo));
+
+    
+    if (fluidSimulator->getParameters().runSimulation)
+    {
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        );
+    }
+    fluidSimulator->update(deltaTime, commandBuffer);
+    if (fluidSimulator->getParameters().runSimulation)
+    {
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT
+        );
+    }
 
     vks::tools::insertImageMemoryBarrier(
         commandBuffer,
@@ -235,17 +218,9 @@ void VulkanApp::drawFrame()
     // update dynamic scissor state
     VkRect2D scissor{ 0, 0, width, height };
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    // bind descriptor set
-    vkCmdBindDescriptorSets(
-        commandBuffer,
-        VK_PIPELINE_BIND_POINT_GRAPHICS,
-        pipelineLayout->getPipelineLayout(),
-        0, 1,
-        &frameUboDescriptorSets->getDescriptorSets()[currentFrame],
-        0, nullptr
-    );
 
-    fluidSimulator->draw(commandBuffer);
+
+    fluidSimulator->draw(commandBuffer, currentFrame, frameUBO->getBuffer(currentFrame));
 
     // finish the current dynamic rendering section
     vkCmdEndRendering(commandBuffer);
@@ -335,8 +310,8 @@ void VulkanApp::cleanUp()
 
 
 
-    pipelineLayout.reset();
-    descriptorSetLayout.reset();
+    //pipelineLayout.reset();
+    //descriptorSetLayout.reset();
     descriptorPool.reset();
     swapChain.reset();
     devices.reset();

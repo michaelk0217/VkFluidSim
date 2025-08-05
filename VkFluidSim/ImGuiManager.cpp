@@ -148,7 +148,10 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
             uiPacket.parameters.runSimulation = ImGui::Button("Run");
         }
         if (!uiPacket.parameters.runSimulation) {
-            uiPacket.parameters.resetSimulation = ImGui::Button("Reset");
+            if (ImGui::Button("Reset"))
+            {
+                uiPacket.parameters.resetSimulation = true;
+            }
         }
 
         ImGui::Separator();
@@ -157,7 +160,7 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
         if (!uiPacket.parameters.runSimulation)
         {
-            if (ShowUint32Input("Particle Count", uiPacket.parameters.particleCount, 0, 10000))
+            if (ShowUint32Input("Particle Count", uiPacket.parameters.particleCount, 0, 100000))
             {
                 uiPacket.parameters.resetSimulation = true;
             }
@@ -175,9 +178,9 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Max Speed", &uiPacket.parameters.maxSpeedForColor, 0.1f, 0.1f, 50.0f);
         ImGui::Separator();
         ShowColorPickerRGB("Color 1 (min)", uiPacket.parameters.colorPoints.color1);
-        ShowColorPickerRGB("Color 2 (max)", uiPacket.parameters.colorPoints.color2);
-        ShowColorPickerRGB("Color 3", uiPacket.parameters.colorPoints.color3);
-        ShowColorPickerRGB("Color 4 (max)", uiPacket.parameters.colorPoints.color4);
+        ShowColorPickerRGB("Color 2", uiPacket.parameters.colorPoints.color2);
+        ShowColorPickerRGB("Color 3 (max)", uiPacket.parameters.colorPoints.color3);
+        //ShowColorPickerRGB("Color 4 (max)", uiPacket.parameters.colorPoints.color4);
 
         ImGui::Separator();
         ImGui::Text("Border Dimensions");

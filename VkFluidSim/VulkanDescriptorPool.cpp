@@ -7,7 +7,8 @@ VulkanDescriptorPool::VulkanDescriptorPool(VkDevice device)
 	uint32_t maxFrames = 2;
 
 	std::vector<VkDescriptorPoolSize> poolSizes = {
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxFrames}
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, maxFrames},
+		{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, maxFrames * 2}
 	};
 
 	VkDescriptorPoolCreateInfo poolCI{};
@@ -15,7 +16,7 @@ VulkanDescriptorPool::VulkanDescriptorPool(VkDevice device)
 	poolCI.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	poolCI.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolCI.pPoolSizes = poolSizes.data();
-	poolCI.maxSets = maxFrames;
+	poolCI.maxSets = maxFrames * 3;
 
 	VK_CHECK_RESULT(vkCreateDescriptorPool(device, &poolCI, nullptr, &descriptorPool));
 }

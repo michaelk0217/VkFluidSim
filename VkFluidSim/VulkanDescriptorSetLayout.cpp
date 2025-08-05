@@ -6,6 +6,13 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VkDevice device)
 {
 	this->device = device;
 
+	//VkDescriptorSetLayoutBinding computeBinding{};
+	//computeBinding.binding = 0;
+	//computeBinding.descriptorCount = 1;
+	//computeBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	//computeBinding.pImmutableSamplers = nullptr;
+	//computeBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
 	// view proj
 	VkDescriptorSetLayoutBinding frameUboLayoutBinding{};
 	frameUboLayoutBinding.binding = 0;
@@ -14,7 +21,9 @@ VulkanDescriptorSetLayout::VulkanDescriptorSetLayout(VkDevice device)
 	frameUboLayoutBinding.pImmutableSamplers = nullptr;
 	frameUboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
+
 	std::array<VkDescriptorSetLayoutBinding, 1> bindings = {
+		//computeBinding,
 		frameUboLayoutBinding
 	};
 

@@ -319,6 +319,59 @@ namespace vks
 			);
 		}
 
+		void insertBufferMemoryBarrier(
+			VkCommandBuffer cmdbuffer, 
+			VkAccessFlags srcAccessMask,
+			VkAccessFlags dstAccessMask,
+			VkBuffer buffer,
+			VkDeviceSize offset,
+			VkDeviceSize size,
+			VkPipelineStageFlags srcStageMask,
+			VkPipelineStageFlags dstStageMask)
+		{
+			VkBufferMemoryBarrier bufferMemoryBarrier = vks::initializers::bufferMemoryBarrier();
+			bufferMemoryBarrier.srcAccessMask = srcAccessMask;
+			bufferMemoryBarrier.dstAccessMask = dstAccessMask;
+			bufferMemoryBarrier.buffer = buffer;
+			bufferMemoryBarrier.offset = offset;
+			bufferMemoryBarrier.size = size;
+
+			vkCmdPipelineBarrier(
+				cmdbuffer,
+				srcStageMask,
+				dstAccessMask,
+				0,
+				0, nullptr,
+				1, &bufferMemoryBarrier,
+				0, nullptr
+			);
+		}
+
+		void insertMemoryBarrier2(
+			VkCommandBuffer cmdbuffer,
+			VkAccessFlags2 srcAccessMask,
+			VkAccessFlags2 dstAccessMask,
+			VkPipelineStageFlags2 srcStageMask,
+			VkPipelineStageFlags2 dstStageMask
+		) {
+			VkMemoryBarrier2 bufferMemoryBarrier{};
+			bufferMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+			bufferMemoryBarrier.srcAccessMask = srcAccessMask;
+			bufferMemoryBarrier.dstAccessMask = dstAccessMask;
+			bufferMemoryBarrier.srcStageMask = srcStageMask;
+			bufferMemoryBarrier.dstStageMask = dstStageMask;
+
+			VkDependencyInfo dependencyInfo{};
+			dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+			dependencyInfo.memoryBarrierCount = 1;
+			dependencyInfo.pMemoryBarriers = &bufferMemoryBarrier;
+
+			vkCmdPipelineBarrier2(
+				cmdbuffer,
+				&dependencyInfo
+			);
+		}
+
 		void exitFatal(const std::string& message, int32_t exitCode)
 		{
 			std::cerr << message << "\n";

@@ -1,5 +1,6 @@
 // fluid.comp
 #version 450
+#extension GL_EXT_debug_printf : enable
 
 layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
 
@@ -12,14 +13,27 @@ struct Particle {
 };
 
 // input buffer (read only)
-layout(binding = 0) buffer ParticleDataIn {  
+layout(std430, binding = 0) readonly buffer ParticleDataIn {  
     Particle particlesIn[];
 };
-
 // output buffer (write-only)
-layout(binding = 1) buffer ParticleDataOut {
+layout(std430, binding = 1) writeonly buffer ParticleDataOut {
     Particle particlesOut[];
 };
+// sorted hash
+layout (std430, binding = 2) readonly buffer SortedKeys {
+    uint sorted_keys[];
+};
+// sorted indices
+layout(std430, binding = 3) readonly buffer SortedIndices {
+    uint sorted_indices[];
+};
+// cell start indices
+layout(std430, binding = 4) readonly buffer CellStartIndices {
+    uint start_indices[];
+};
+
+
 
 layout(push_constant) uniform PushConstants {
     uint particleCount;
@@ -31,7 +45,7 @@ layout(push_constant) uniform PushConstants {
     float collisionDamping;
     float mass;
     vec2 boxHalfSize;
-    float padding[2];
+    vec2 mousePos;
     vec4 color1;
     vec4 color2;
     vec4 color3;
@@ -39,17 +53,24 @@ layout(push_constant) uniform PushConstants {
     float padding2[3];
 } pc;
 
+const float PI = 3.14159265359;
 const float epsilon = 0.0001;
+const uint SENTINEL = 0xFFFFFFFF;
+
+const uint HASH_K1 = 374761393;
+const uint HASH_K2 = 668265263;
+const uint HASH_K3 = 1274126177;
+const uint HASH_TABLE_SIZE = 1000003;
 
 float SmoothingKernal(float radius, float dst) {
     if (dst >= radius) return 0.0;
-    float volume = (3.14159265359 * pow(radius, 4)) / 6.0;
+    float volume = (PI * pow(radius, 4)) / 6.0;
     return (radius - dst) * (radius - dst) / volume;
 }
 
 float SmoothingKernalDerivative(float radius, float dst) {
     if (dst >= radius) return 0.0;
-    float scale = 12 / (pow(radius, 4) * 3.14159265359);
+    float scale = 12 / (pow(radius, 4) * PI);
     return (dst - radius) * scale;
 }
 
@@ -65,26 +86,52 @@ float CalculateSharedPressure(float density1, float density2) {
     return (pressure1 + pressure2) / 2;
 }
 
+
+ivec2 PositionToCellCoord(vec2 pos, float radius) {
+    return ivec2(pos / radius);
+}
+
+uint HashCell(ivec2 cell) {
+    // uint a = cell.x * HASH_K1;
+    // uint b = cell.y * HASH_K2;
+    // return a + b;
+
+    uint x = uint(cell.x);
+    uint y = uint(cell.y);
+    uint h = x * HASH_K1 + y * HASH_K2;
+    h = (h^(h>>13)) * HASH_K3;
+
+    return h^(h>>16);
+}
+
+
+uint GetKeyFromHash(uint hash) {
+    // return hash % pc.particleCount;
+    return hash % HASH_TABLE_SIZE;
+}
+
 float CalculateDensityBruteForce(vec2 samplePoint) {
     float density = 0.0;
     for (uint i = 0; i < pc.particleCount; i++) {
         float dst = length(particlesIn[i].position.xy - samplePoint);
-        density += SmoothingKernal(pc.smoothingRadius, dst);
+        density += pc.mass * SmoothingKernal(pc.smoothingRadius, dst);
     }
     return density;
 }
 
 vec2 CalculatePressureForceBruteForce(uint index, float samplePointDensity) {
     vec2 pos = particlesIn[index].position.xy;
-    
+    float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
     vec2 pressureForce = vec2(0.0);
     for (uint i = 0; i < pc.particleCount; i++) {
         if (i == index) continue;
 
         vec2 offset = particlesIn[i].position.xy - pos;
-        float dst = length(offset);
+        // float dst = length(offset);
+        float sqrDst = dot(offset, offset);
 
-        if (dst < pc.smoothingRadius) {
+        if (sqrDst < sqrRadius) {
+            float dst = sqrt(sqrDst);
             vec2 dir = dst == 0.0 ? vec2(1.0, 0.0) : normalize(offset);
 
             float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
@@ -96,6 +143,160 @@ vec2 CalculatePressureForceBruteForce(uint index, float samplePointDensity) {
     return pressureForce;
 }
 
+float CalcDensityForEachNeighbor(vec2 pos) {
+    ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
+    // float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
+    float density = 0;
+    // uint neighborCount = 0; // debug counter
+    // if (gl_GlobalInvocationID.x == 0) {
+    //     debugPrintfEXT("Particle %d at (%f,%f) in cell (%d,%d)\n", 
+    // gl_GlobalInvocationID.x, pos.x, pos.y, originCell.x, originCell.y);
+    // }
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            ivec2 cell = ivec2(originCell.x + x, originCell.y + y);
+            uint hash = HashCell(cell);
+            uint key = GetKeyFromHash(hash);
+            uint currIndex = start_indices[key];
+
+            // if (gl_GlobalInvocationID.x == 0) {
+            //     debugPrintfEXT("  Neighbor cell (%d,%d): hash=%u, key=%u\n", cell.x, cell.y, hash, key);
+            // }
+
+            while (currIndex < pc.particleCount) {
+                uint neighborHash = sorted_keys[currIndex];
+                uint neighborIndex = sorted_indices[currIndex];
+                currIndex += 1;
+                if (neighborHash != key) break;
+
+                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                // vec2 neighborPos = particlesIn[neighborIndex].position.xy;
+                // vec2 offsetToNeighbor = neighborPos - pos;
+                // float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
+                float dst = length(neighborPos - pos);
+                if (dst <= pc.smoothingRadius) {
+                    // if (sqrDstToNeighbor > sqrRadius) continue;
+                    // float dst = sqrt(sqrDstToNeighbor);
+                    density += SmoothingKernal(pc.smoothingRadius, dst);
+
+                    // if (gl_GlobalInvocationID.x == 0) {
+                    //     debugPrintfEXT("Valid Neighbor %d: pos=(%f,%f), dst=%f\n", 
+                    //         neighborIndex, neighborPos.x, neighborPos.y, dst);
+                    // }
+                } else {
+                    // debugPrintfEXT("Invalid neighbor %d: pos=(%f,%f), dst=%f\n", neighborIndex, neighborPos.x, neighborPos.y, dst);
+                }
+                
+
+                // neighborCount++;
+            }
+        }
+    }
+    // if (gl_GlobalInvocationID.x == 0) {
+    //     debugPrintfEXT("Particle %d: neighbors=%d\n", gl_GlobalInvocationID.x, neighborCount);
+    // }
+    return density;
+}
+
+vec2 CalcPressureForceForEachNeighbor() {
+    uint id = gl_GlobalInvocationID.x;
+    vec2 pressureForce = vec2(0.0);
+
+    if (id >= pc.particleCount) return pressureForce;
+
+    float density = particlesIn[id].density;
+    float pressure = ConvertDensityToPressure(density);
+
+    vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
+    // vec2 pos = particlesIn[id].position.xy;
+    ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
+    // float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
+
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            uint hash = HashCell(ivec2(originCell.x + x, originCell.y + y));
+            uint key = GetKeyFromHash(hash);
+            uint currIndex = start_indices[key];
+
+            while (currIndex < pc.particleCount) {
+                uint neighborHash = sorted_keys[currIndex];
+                uint neighborIndex = sorted_indices[currIndex];
+                currIndex += 1;
+                if (neighborHash != key) break;
+
+                if (neighborIndex == id) continue;
+
+                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                // vec2 neighborPos = particlesIn[neighborIndex].position.xy;
+                vec2 offsetToNeighbor = neighborPos - pos;
+                // float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
+                float dst = length(offsetToNeighbor);
+                // if (sqrDstToNeighbor > sqrRadius) continue;
+                if (dst > pc.smoothingRadius) continue;
+
+                
+                // float dst = sqrt(sqrDstToNeighbor);
+                vec2 dir = dst > 0 ? normalize(offsetToNeighbor) : vec2(1.0, 0.0);
+                
+                float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
+                float neighborDensity = particlesIn[neighborIndex].density;
+                float neighborPressure = ConvertDensityToPressure(neighborDensity);
+                float sharedPressure = (pressure + neighborPressure) * 0.5;
+                pressureForce += dir *slope * sharedPressure * pc.mass / max(neighborDensity, epsilon);
+            }
+        }
+        
+    }
+
+    return pressureForce;
+}
+
+// void ForEachNeighbor(inout float density, inout vec2 pressureForce) {
+//     uint id = gl_GlobalInvocationID.x;
+//     if (id >= pc.particleCount) return;
+
+//     pressureForce = vec2(0.0);
+//     density = 0;
+
+//     float pressure = ConvertDensityToPressure(particlesIn[id].density);
+
+//     vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
+//     ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
+
+//     for (int y = -1; y <= 1; ++y) {
+//         for (int x = -1; x <= 1; ++x) {
+//             ivec2 cell = ivec2(originCell.x + x, originCell.y + y);
+//             uint hash = HashCell(cell);
+//             uint key = GetKeyFromHash(hash);
+//             uint currIndex = start_indices[key];
+
+//             while (currIndex < pc.particleCount) {
+//                 uint neighborHash = sorted_keys[currIndex];
+//                 uint neighborIndex = sorted_indices[currIndex];
+//                 if (neighborHash != key) break;
+
+//                 vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+//                 vec2 offset = neighborPos - pos;
+//                 float dst = length(offset);
+
+//                 if (dst > pc.smoothingRadius) continue;
+
+//                 density += SmoothingKernal(pc.smoothingRadius, dst);
+
+//                 if (neighborIndex == id) continue;
+
+//                 vec2 dir = dst > 0 ? normalize(offset) : vec2(1.0, 0.0);
+                
+//                 float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
+//                 float neighborDensity = particlesIn[neighborIndex].density;
+//                 float neighborPressure = ConvertDensityToPressure(neighborDensity);
+//                 float sharedPressure = (pressure + neighborPressure) * 0.5;
+//                 pressureForce += dir *slope * sharedPressure * pc.mass / max(neighborDensity, epsilon);
+//             }
+
+//         }
+//     }
+// }
 
 vec4 lerpColorVector2(float t, vec4 c1, vec4 c2) {
     return c1 * (1.0  - t) + (c2 * t);
@@ -123,11 +324,22 @@ void main() {
 
     // todo: update to spatial grid later
     // brute force density calculation
-    float density = CalculateDensityBruteForce(predictedPosition);
+    // float density = CalculateDensityBruteForce(predictedPosition);
 
+
+    // float density = CalcDensityForEachNeighbor(predictedPosition);
+    // float density = 0;
+    
     // todo: update to spatial grid later
     // brute force pressure force calculation
-    vec2 pressureForce = CalculatePressureForceBruteForce(index, density);
+    // vec2 pressureForce = CalculatePressureForceBruteForce(index, density);
+
+    float density = CalcDensityForEachNeighbor(predictedPosition);
+    vec2 pressureForce = CalcPressureForceForEachNeighbor();
+
+    // float density = 0;
+    // vec2 pressureForce = vec2(0.0);
+    // ForEachNeighbor(density, pressureForce);
 
     // update velocity
     vec2 pressureAcceleration = pressureForce / max(density, epsilon);
@@ -151,8 +363,152 @@ void main() {
     float t = clamp(length(vel) / pc.maxSpeedForColor, 0.0, 1.0);
     vec4 color = lerpColorVector3(t, pc.color1, pc.color2, pc.color3);
 
+    // ============ color debug =============
+    ivec2 mouse_cell = PositionToCellCoord(pc.mousePos, pc.smoothingRadius);
+    ivec2 particle_cell = PositionToCellCoord(pos, pc.smoothingRadius);
+    if (abs(int(mouse_cell.x) - int(particle_cell.x)) <= 1 && 
+        abs(int(mouse_cell.y) - int(particle_cell.y)) <= 1) {
+        color = vec4(1.0, 1.0, 0.0, 1.0);
+        // if in center
+        // if (mouse_cell.x == particle_cell.x && mouse_cell.y == particle_cell.y) {
+        //     color = vec4(1.0, 0.0, 0.0, 1.0); 
+        // }
+        if (GetKeyFromHash(HashCell(mouse_cell)) == GetKeyFromHash(HashCell(particle_cell))) {
+            color = vec4(1.0, 0.0, 0.0, 1.0); 
+        }
+    }
+
+
     particlesOut[index].position = vec4(pos, 0.0, 1.0);
     particlesOut[index].velocity = vec4(vel, 0.0, 0.0);
     particlesOut[index].color = color;
     particlesOut[index].density = density;
 }
+
+// void main() {
+//     uint index = gl_GlobalInvocationID.x;
+//     if (index >= pc.particleCount) return;
+
+//     // Keep the position and velocity data from the input for this frame
+//     vec2 pos = particlesIn[index].position.xy;
+//     vec2 vel = particlesIn[index].velocity.xy;
+
+//     // --- DEBUG COLORING LOGIC ---
+//     vec4 final_color = vec4(0.0, 0.0, 1.0, 1.0); // Default: Blue
+
+//     // Get the position of our target particle (index 0)
+//     vec2 target_pos = particlesIn[0].position.xy;
+//     float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
+
+//     // --- Check 1: Is the current particle a neighbor via Brute Force? ---
+//     bool is_bf_neighbor = false;
+//     if (index != 0) {
+//         vec2 offset_bf = pos - target_pos;
+//         if (dot(offset_bf, offset_bf) < sqrRadius) {
+//             is_bf_neighbor = true;
+//         }
+//     }
+
+//     // --- Check 2: Is the current particle a neighbor via Spatial Hash? ---
+//     bool is_sh_neighbor = false;
+//     bool is_sh_neighbor_radius = false;
+//     if (index != 0) {
+//         ivec2 target_cell = PositionToCellCoord(target_pos, pc.smoothingRadius);
+//         // Loop through the 3x3 grid around the target particle
+//         for (int y = -1; y <= 1; ++y) {
+//             for (int x = -1; x <= 1; ++x) {
+//                 ivec2 cell = ivec2(target_cell.x + x, target_cell.y + y);
+//                 uint key = GetKeyFromHash(HashCell(cell));
+//                 uint start_index = start_indices[key];
+
+//                 if (start_index == SENTINEL) continue;
+
+//                 for (uint i = start_index; i < pc.particleCount; ++i) {
+//                     if (sorted_keys[i] != key) break;
+//                     uint neighbor_index = sorted_indices[i];
+
+//                     // If the current particle's index is found in the target's neighbor list
+//                     if (neighbor_index == index) {
+//                         is_sh_neighbor = true;
+
+//                         vec2 offset_sh = pos - target_pos;
+//                         if (dot(offset_sh, offset_sh) < sqrRadius) {
+//                             is_sh_neighbor_radius = true;
+//                         }
+
+//                         break; // Found it, no need to search further in this cell
+//                     }
+//                 }
+//                 if (is_sh_neighbor) break; // Found it, no need to check other cells
+//             }
+//             if (is_sh_neighbor) break;
+//         }
+//     }
+
+//     // --- Assign colors based on the checks ---
+//     if (is_bf_neighbor && is_sh_neighbor && is_sh_neighbor_radius) {
+//         final_color = vec4(1.0, 0.0, 1.0, 1.0); // Magenta: Found by both (Correct)
+//     } else if (is_sh_neighbor && is_sh_neighbor_radius) {
+//         final_color = vec4(1.0, 0.0, 0.0, 1.0);
+//     } else if (is_bf_neighbor) {
+//         final_color = vec4(0.0, 1.0, 0.0, 1.0); // Green: Brute force ONLY (Spatial hash is missing this particle)
+//     } else if (is_sh_neighbor) {
+//         final_color = vec4(1.0, 1.0, 0.0, 1.0); // Yellow: Spatial hash ONLY (Spatial hash is incorrectly including this particle)
+//     }
+
+//     // --- Special case for the target particle itself ---
+//     if (index == 0) {
+//         final_color = vec4(1.0, 1.0, 1.0, 1.0); // White: The target particle
+//     }
+//     // --- Write Final Results ---
+//     // We write the original position and velocity so the particles don't move.
+//     particlesOut[index].position = vec4(pos, 0.0, 1.0);
+//     particlesOut[index].velocity = vec4(vel, 0.0, 0.0);
+//     particlesOut[index].color = final_color;
+//     particlesOut[index].density = particlesIn[index].density; // Keep old density
+// }
+
+// A dedicated main function for debugging the spatial hash buffers.
+// void main() {
+//     // We only want to print from a single thread to avoid spamming the console.
+//     // gl_GlobalInvocationID.x == 0 is a common choice for this.
+//     if (gl_GlobalInvocationID.x == 0) {
+
+//         debugPrintfEXT("--- DEBUGGING SPATIAL HASH BUFFERS (Particle Count: %u) ---\n", pc.particleCount);
+
+//         // 1. Print the first 'particleCount' elements of the sorted_keys buffer
+//         debugPrintfEXT("\n--- Sorted Keys : Indices (sorted_keys : sorted_indices) ---\n");
+//         for (uint i = 0; i < pc.particleCount; i++) {
+//             debugPrintfEXT("  sorted_keys[%u] = %u, sorted_indices[%u] = %u", i, sorted_keys[i], i, sorted_indices[i]);
+//         }
+
+//         // 2. Print the first 'particleCount' elements of the sorted_indices buffer
+//         // debugPrintfEXT("\n--- Sorted Indices (sorted_indices) ---\n");
+//         // for (uint i = 0; i < pc.particleCount; i++) {
+//         //     debugPrintfEXT("  sorted_indices[%u] = %u\n", i, sorted_indices[i]);
+//         // }
+
+//         // 3. Print the first 'particleCount' elements of the start_indices buffer
+//         // Note: Your GetKeyFromHash function uses 'pc.particleCount' as the table size.
+//         debugPrintfEXT("\n--- Cell Start Indices (start_indices) ---\n");
+//         for (uint i = 0; i < pc.particleCount; i++) {
+//             uint value = start_indices[i];
+//             if (value == SENTINEL) {
+//                 // Print the sentinel value as a string to make it obvious.
+//                 debugPrintfEXT("  start_indices[%u] = SENTINEL\n", i);
+//             } else {
+//                 debugPrintfEXT("  start_indices[%u] = %u\n", i, value);
+//             }
+//         }
+        
+//         debugPrintfEXT("\n--- END OF DEBUG DUMP ---\n");
+//     }
+
+//     // This part is important! A compute shader must write to all its 'writeonly'
+//     // buffers. We'll just copy the input data to the output to ensure the
+//     // shader remains valid while we debug.
+//     uint index = gl_GlobalInvocationID.x;
+//     if (index < pc.particleCount) {
+//         particlesOut[index] = particlesIn[index];
+//     }
+// }

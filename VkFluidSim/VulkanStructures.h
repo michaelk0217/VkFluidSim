@@ -120,7 +120,7 @@ struct GradientColorsPoints
 
 struct FluidSimParameters
 {
-	uint32_t particleCount = 1000;
+	uint32_t particleCount = 10000;
 	float collisionDamping = 0.8f;
 	float boxHalfWidth = 13.0f;
 	float boxHalfHeight = 8.0f;
@@ -131,7 +131,7 @@ struct FluidSimParameters
 	/*glm::vec3 minSpeedColor{ 0.2f, 0.6f, 1.0f };
 	glm::vec3 maxSpeedColor{ 1.0f, 0.0f, 0.0f };*/
 	GradientColorsPoints colorPoints;
-	float smoothingRadius = 1.2f;
+	float smoothingRadius = 0.1f;
 	float mass = 1.0f;
 	float targetDensity = 3.0f;
 	float pressureMultiplier = 2.0f;
@@ -150,7 +150,7 @@ struct ComputeParameters
 	float collisionDamping;
 	float mass;
 	glm::vec2 boxHalfSize;
-	float padding[2];
+	glm::vec2 mousePos;
 	glm::vec4 color1;
 	glm::vec4 color2;
 	glm::vec4 color3;
@@ -158,6 +158,11 @@ struct ComputeParameters
 	float padding2[3];
 };
 
+struct SortPushConstants {
+	uint32_t elementCount;
+	uint32_t mergeSize;
+	uint32_t compareStride;
+};
 
 
 struct UiContextPacket {

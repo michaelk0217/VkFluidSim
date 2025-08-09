@@ -160,7 +160,7 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Collision Damping", &uiPacket.parameters.collisionDamping, 0.01f, 0.0f, 1.0f);
         if (!uiPacket.parameters.runSimulation)
         {
-            if (ShowUint32Input("Particle Count", uiPacket.parameters.particleCount, 0, 100000))
+            if (ShowUint32Input("Particle Count", uiPacket.parameters.particleCount, 0, 50000))
             {
                 uiPacket.parameters.resetSimulation = true;
             }

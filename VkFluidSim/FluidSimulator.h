@@ -38,7 +38,7 @@ public:
 
 	~FluidSimulator();
 
-	void update(float deltaTime, VkCommandBuffer commandBuffer);
+	void update(float deltaTime, VkCommandBuffer commandBuffer, glm::vec2 mousePos);
 	void draw(VkCommandBuffer commandBuffer, uint32_t currentFrameIndex, VkBuffer uboBuffer);
 	
 	FluidSimParameters& getParameters() { return m_params; };
@@ -85,13 +85,53 @@ private:
 	std::vector<VkBuffer> particleBuffers;
 	std::vector<VkDeviceMemory> particleBufferMemories;
 
-	VkPipelineLayout computePipelineLayout;
-	VkPipeline computePipeline;
-	VkDescriptorSetLayout computeDescriptorSetLayout;
-	std::vector<VkDescriptorSet> computeDescriptorSets;
+	VkPipelineLayout m_fluidComputePipelineLayout;
+	VkPipeline m_fluidComputePipeline;
+	VkDescriptorSetLayout m_fluidComputeDescriptorSetLayout;
+	std::vector<VkDescriptorSet> m_fluidComputeDescriptorSets;
 
 	uint32_t currentBuffer = 0;
+
+	// ---  Hashing pass resources ---
+	const uint32_t HASH_TABLE_SIZE = 1000003;
+
+	VkBuffer m_particleHashesBuffer;
+	VkDeviceMemory m_particleHashesMemory;
+	VkBuffer m_particleIndicesBuffer;
+	VkDeviceMemory m_particleIndicesMemory;
+
+	VkPipelineLayout m_hashPipelineLayout;
+	VkPipeline m_hashPipeline;
+	VkDescriptorSetLayout m_hashDescriptorSetLayout;
+	std::vector<VkDescriptorSet> m_hashDescriptorSets;
 	
+	// --- Sorting Pass Resources ---
+	VkPipelineLayout m_sortPipelineLayout;
+	VkPipeline m_sortPipeline;
+	VkDescriptorSetLayout m_sortDescriptorSetLayout;
+	VkDescriptorSet m_sortDescriptorSet;
+
+	// --- Indexing Pass Resources ---
+	VkBuffer m_cellStartIndicesBuffer;
+	VkDeviceMemory m_cellStartIndicesMemory;
+
+	VkPipelineLayout m_indexingPipelineLayout;
+	VkPipeline m_indexingPipeline;
+	VkDescriptorSetLayout m_indexingDescriptorSetLayout;
+	VkDescriptorSet m_indexingDescriptorSet;
+
+
+	// hashing
+	void createHashPassResources();
+	void updateHashDescriptorSets();
+
+	// sorting
+	void createSortPassResources();
+	void dispatchSort(VkCommandBuffer commandBuffer);
+
+	// indexing
+	void createIndexingPassResources();
+
 	// graphics
 	void createGraphicsPipelineLayout();
 

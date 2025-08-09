@@ -42,6 +42,8 @@ class VulkanApp
 {
 private:
     std::unique_ptr<Window> window;
+    glm::vec2 mousePosWorld;
+
     std::unique_ptr<Camera> camera;
     std::unique_ptr<VulkanInstance> instance;
     std::unique_ptr<VulkanSurface> surface;
@@ -107,6 +109,7 @@ private:
         "VK_KHR_synchronization2"
     };
 
+    void updateMouseWorldPosition();
 
     void initGlfwWindow();
     void initVulkan();

@@ -1,6 +1,7 @@
 #include "VulkanApp.h"
 
 
+
 void VulkanApp::initGlfwWindow()
 {
     try {
@@ -72,7 +73,6 @@ void VulkanApp::initVulkan()
         swapChain->getColorFormat(), 
         descriptorPool->getDescriptorPool(),
         frameUBO->getBuffers()
-        //*frameUboDescriptorSets
     );
 }
 
@@ -85,6 +85,7 @@ void VulkanApp::mainLoop()
     while (window && !window->shouldClose())
     {
         window->pollEvents();
+        updateMouseWorldPosition();
 
         // delta time calculation
         auto currentTime = std::chrono::high_resolution_clock::now();
@@ -140,28 +141,9 @@ void VulkanApp::drawFrame(float deltaTime)
     const VkCommandBuffer commandBuffer = commandBuffers->getCommandBuffer(currentFrame);
     VK_CHECK_RESULT(vkBeginCommandBuffer(commandBuffer, &cmdBufInfo));
 
-    
-    if (fluidSimulator->getParameters().runSimulation)
-    {
-        vks::tools::insertMemoryBarrier2(
-            commandBuffer,
-            VK_ACCESS_2_SHADER_READ_BIT,
-            VK_ACCESS_2_SHADER_WRITE_BIT,
-            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
-        );
-    }
-    fluidSimulator->update(deltaTime, commandBuffer);
-    if (fluidSimulator->getParameters().runSimulation)
-    {
-        vks::tools::insertMemoryBarrier2(
-            commandBuffer,
-            VK_ACCESS_2_SHADER_WRITE_BIT,
-            VK_ACCESS_2_SHADER_READ_BIT,
-            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT
-        );
-    }
+
+    fluidSimulator->update(deltaTime, commandBuffer, mousePosWorld);
+
 
     vks::tools::insertImageMemoryBarrier(
         commandBuffer,
@@ -254,12 +236,16 @@ void VulkanApp::drawFrame(float deltaTime)
     submitInfo.waitSemaphoreCount = 1;
     // semaphore to ge signalled when command buffers have completed
     submitInfo.pSignalSemaphores = &syncObj->renderCompleteSemaphores[imageIndex];
+    //submitInfo.pSignalSemaphores = &syncObj->renderCompleteSemaphores[currentFrame];
+
     submitInfo.signalSemaphoreCount = 1;
 
     VK_CHECK_RESULT(vkQueueSubmit(devices->getGraphicsQueue(), 1, &submitInfo, syncObj->waitFences[currentFrame]));
 
 
     result = swapChain->queuePresent(devices->getPresentQueue(), imageIndex, syncObj->renderCompleteSemaphores[imageIndex]);
+    //result = swapChain->queuePresent(devices->getPresentQueue(), imageIndex, syncObj->renderCompleteSemaphores[currentFrame]);
+
     if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR))
     {
         windowResize();
@@ -291,6 +277,38 @@ void VulkanApp::windowResize()
 
     swapChain->create(width, height);
     depthResourcesObj->create(devices->getLogicalDevice(), devices->getPhysicalDevice(), devices->getGraphicsQueue(), commandPool->getCommandPool(), swapChain->getExtent());
+}
+
+
+void VulkanApp::updateMouseWorldPosition()
+{
+    double mouseX, mouseY;
+    window->getCursorPos(mouseX, mouseY);
+
+    int winWidth, winHeight;
+    window->getFramebufferSize(winWidth, winHeight);
+    if (winWidth == 0 || winHeight == 0) return;
+
+    float ndcX = -1 * (2.0f * static_cast<float>(mouseX) / winWidth - 1.0f);
+    float ndcY = 1.0f - (2.0f * static_cast<float>(mouseY)) / winHeight;
+    
+    // inverses
+    glm::mat4 invProj = glm::inverse(camera->matrices.perspective);
+    glm::mat4 invView = glm::inverse(camera->matrices.view);
+    
+    glm::vec4 clipCoords(ndcX, ndcY, -1.0f, 1.0f);
+    
+    glm::vec4 eyeCoords = invProj * clipCoords;
+    eyeCoords = glm::vec4(eyeCoords.x, eyeCoords.y, -1.0f, 0.0f);
+    
+    glm::vec4 worldRay4 = invView * eyeCoords;
+    glm::vec3 worldRayDir = glm::normalize(glm::vec3(worldRay4));
+
+    glm::vec3 camPos = camera->position;
+    float t = -camPos.z / worldRayDir.z;
+    glm::vec3 intersectionPoint = camPos + t * worldRayDir;
+
+    mousePosWorld = glm::vec2(intersectionPoint.x, intersectionPoint.y);
 }
 
 void VulkanApp::cleanUp()

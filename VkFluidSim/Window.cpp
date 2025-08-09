@@ -86,6 +86,11 @@ GLfloat Window::getYChange()
 	return theChange;
 }
 
+void Window::getCursorPos(double& x, double& y)
+{
+	glfwGetCursorPos(glfwWindow, &x, &y);
+}
+
 void Window::setFramebufferSizeCallback(GLFWframebuffersizefun callback)
 {
 	if (!glfwWindow) return;

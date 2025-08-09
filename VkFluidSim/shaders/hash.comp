@@ -1,0 +1,90 @@
+#version 450
+
+layout (local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;
+    vec4 velocity;
+    vec4 color;
+    float density;
+    float _padding[3];
+};
+
+// Input buffer of all particles
+layout (std430, binding = 0) readonly buffer ParticleDataIn {
+    Particle particlesIn[];
+};
+
+// output buffer for calculated hashes
+layout (std430, binding = 1) writeonly buffer CellKeyOut {
+    uint cellKeys[];
+};
+
+// output buffer for original particle indices
+layout (std430, binding = 2) writeonly buffer IndexDataOut {
+    uint particleIndices[];
+};
+
+layout(push_constant) uniform PushConstants {
+    uint particleCount;
+    float deltaTime;
+    float gravity;
+    float smoothingRadius;
+    float targetDensity;
+    float pressureMultiplier;
+    float collisionDamping;
+    float mass;
+    vec2 boxHalfSize;
+    vec2 mousePos;
+    vec4 color1;
+    vec4 color2;
+    vec4 color3;
+    float maxSpeedForColor;
+    float padding2[3];
+} pc;
+
+const uint HASH_K1 = 374761393;
+const uint HASH_K2 = 668265263;
+const uint HASH_K3 = 1274126177;
+const uint HASH_TABLE_SIZE = 1000003;
+
+
+ivec2 PositionToCellCoord(vec2 pos, float radius) {
+    return ivec2(pos / radius);
+}
+
+
+uint HashCell(ivec2 cell) {
+    // uint a = cell.x * HASH_K1;
+    // uint b = cell.y * HASH_K2;
+    // return a + b;
+
+    uint x = uint(cell.x);
+    uint y = uint(cell.y);
+    uint h = x * HASH_K1 + y * HASH_K2;
+    h = (h^(h>>13)) * HASH_K3;
+
+    return h^(h>>16);
+}
+
+uint GetKeyFromHash(uint hash) {
+    // return hash % pc.particleCount;
+    return hash % HASH_TABLE_SIZE;
+}
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    
+
+    if (i >= pc.particleCount) return;
+
+    // vec2 pos = particlesIn[i].position.xy;
+    vec2 pos = particlesIn[i].position.xy + (particlesIn[i].velocity.xy * pc.deltaTime);
+
+    ivec2 cell = PositionToCellCoord(pos, pc.smoothingRadius);
+    uint hash = HashCell(cell);
+    uint cellKey = GetKeyFromHash(hash);
+    
+    cellKeys[i] = cellKey;
+    particleIndices[i] = i;
+}

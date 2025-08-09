@@ -70,8 +70,14 @@ FluidSimulator::FluidSimulator(
     initializeParticles();
 
     createParticleBuffers();
+
+    createHashPassResources();
+    createSortPassResources();
+    createIndexingPassResources();
     createComputePipeline();
     createComputeDescriptorSets();
+
+
 }
 
 FluidSimulator::~FluidSimulator()
@@ -84,17 +90,17 @@ FluidSimulator::~FluidSimulator()
     {
         vkDestroyPipelineLayout(m_devices.getLogicalDevice(), graphicsPipelineLayout, nullptr);
     }
-    if (computePipeline != VK_NULL_HANDLE)
+    if (m_fluidComputePipeline != VK_NULL_HANDLE)
     {
-        vkDestroyPipeline(m_devices.getLogicalDevice(), computePipeline, nullptr);
+        vkDestroyPipeline(m_devices.getLogicalDevice(), m_fluidComputePipeline, nullptr);
     }
-    if (computePipelineLayout != VK_NULL_HANDLE)
+    if (m_fluidComputePipelineLayout != VK_NULL_HANDLE)
     {
-        vkDestroyPipelineLayout(m_devices.getLogicalDevice(), computePipelineLayout, nullptr);
+        vkDestroyPipelineLayout(m_devices.getLogicalDevice(), m_fluidComputePipelineLayout, nullptr);
     }
-    if (computeDescriptorSetLayout != VK_NULL_HANDLE)
+    if (m_fluidComputeDescriptorSetLayout != VK_NULL_HANDLE)
     {
-        vkDestroyDescriptorSetLayout(m_devices.getLogicalDevice(), computeDescriptorSetLayout, nullptr);
+        vkDestroyDescriptorSetLayout(m_devices.getLogicalDevice(), m_fluidComputeDescriptorSetLayout, nullptr);
     }
     if (!particleBuffers.empty()) {
         for (auto& pBuff : particleBuffers)
@@ -111,9 +117,30 @@ FluidSimulator::~FluidSimulator()
         }
         particleBufferMemories.clear();
     }
+
+    // hash resources
+    if (m_hashPipeline != VK_NULL_HANDLE) vkDestroyPipeline(m_devices.getLogicalDevice(), m_hashPipeline, nullptr);
+    if (m_hashPipelineLayout != VK_NULL_HANDLE) vkDestroyPipelineLayout(m_devices.getLogicalDevice(), m_hashPipelineLayout, nullptr);
+    if (m_hashDescriptorSetLayout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(m_devices.getLogicalDevice(), m_hashDescriptorSetLayout, nullptr);
+    if (m_particleHashesBuffer != VK_NULL_HANDLE) vkDestroyBuffer(m_devices.getLogicalDevice(), m_particleHashesBuffer, nullptr);
+    if (m_particleIndicesBuffer != VK_NULL_HANDLE) vkDestroyBuffer(m_devices.getLogicalDevice(), m_particleIndicesBuffer, nullptr);
+    if (m_particleHashesMemory != VK_NULL_HANDLE) vkFreeMemory(m_devices.getLogicalDevice(), m_particleHashesMemory, nullptr);
+    if (m_particleIndicesMemory != VK_NULL_HANDLE) vkFreeMemory(m_devices.getLogicalDevice(), m_particleIndicesMemory, nullptr);
+
+    // sort resources
+    if (m_sortPipeline != VK_NULL_HANDLE) vkDestroyPipeline(m_devices.getLogicalDevice(), m_sortPipeline, nullptr);
+    if (m_sortPipelineLayout != VK_NULL_HANDLE) vkDestroyPipelineLayout(m_devices.getLogicalDevice(), m_sortPipelineLayout, nullptr);
+    if (m_sortDescriptorSetLayout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(m_devices.getLogicalDevice(), m_sortDescriptorSetLayout, nullptr);
+    
+    // calc indices resources
+    if (m_cellStartIndicesBuffer != VK_NULL_HANDLE) vkDestroyBuffer(m_devices.getLogicalDevice(), m_cellStartIndicesBuffer, nullptr);
+    if (m_cellStartIndicesMemory != VK_NULL_HANDLE) vkFreeMemory(m_devices.getLogicalDevice(), m_cellStartIndicesMemory, nullptr);
+    if (m_indexingDescriptorSetLayout != VK_NULL_HANDLE) vkDestroyDescriptorSetLayout(m_devices.getLogicalDevice(), m_indexingDescriptorSetLayout, nullptr);
+    if (m_indexingPipelineLayout != VK_NULL_HANDLE) vkDestroyPipelineLayout(m_devices.getLogicalDevice(), m_indexingPipelineLayout, nullptr);
+    if (m_indexingPipeline != VK_NULL_HANDLE) vkDestroyPipeline(m_devices.getLogicalDevice(), m_indexingPipeline, nullptr);
 }
 
-void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer)
+void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer, glm::vec2 mousePos)
 {
     bool did_reset = m_params.resetSimulation;
 
@@ -134,6 +161,7 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer)
         initializeParticles();
 
         createParticleBuffers();
+        updateHashDescriptorSets();
         updateComputeDescriptorSets();
         currentBuffer = 0;
 
@@ -142,18 +170,10 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer)
 
     updateContainerBuffer();
 
+
+
     if (m_params.runSimulation || did_reset)
     {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
-        vkCmdBindDescriptorSets(
-            commandBuffer,
-            VK_PIPELINE_BIND_POINT_COMPUTE,
-            computePipelineLayout,
-            0, 1,
-            &computeDescriptorSets[currentBuffer],
-            0, nullptr
-        );
-
         ComputeParameters push{};
         push.particleCount = m_params.particleCount;
         push.deltaTime = did_reset ? 0.0f : deltaTime;
@@ -164,40 +184,85 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer)
         push.collisionDamping = m_params.collisionDamping;
         push.mass = m_params.mass;
         push.boxHalfSize = glm::vec2(m_params.boxHalfWidth, m_params.boxHalfHeight);
+        push.mousePos = mousePos;
         push.color1 = glm::vec4(m_params.colorPoints.color1, 1.0f);
         push.color2 = glm::vec4(m_params.colorPoints.color2, 1.0f);
         push.color3 = glm::vec4(m_params.colorPoints.color3, 1.0f);
         push.maxSpeedForColor = m_params.maxSpeedForColor;
 
-        vkCmdPushConstants(commandBuffer, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeParameters), &push);
-
         uint32_t groupCountX = (m_params.particleCount + 255) / 256;
+
+        // --- PRE-COMPUTE ---
+        // clear cell start indices to sential value (0xFFFFFFFF = -1), marking all values empty
+        const uint32_t SENTINEL = 0xFFFFFFFF;
+        vkCmdFillBuffer(commandBuffer, m_particleHashesBuffer, 0, VK_WHOLE_SIZE, SENTINEL);
+        vkCmdFillBuffer(commandBuffer, m_particleIndicesBuffer, 0, VK_WHOLE_SIZE, SENTINEL);
+        vkCmdFillBuffer(commandBuffer, m_cellStartIndicesBuffer, 0, VK_WHOLE_SIZE, SENTINEL);
+
+
+
+        // --- Dispatch Hash Pass ---
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_TRANSFER_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        );
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_hashPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_hashPipelineLayout, 0, 1, &m_hashDescriptorSets[currentBuffer], 0, nullptr);
+        vkCmdPushConstants(commandBuffer, m_hashPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeParameters), &push);
         vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
 
+        // --- Dispatch Sort Pass ---
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        );
+
+        dispatchSort(commandBuffer);
+
+        // --- Dispatch Indexing Pass ---
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        );
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_indexingPipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_indexingPipelineLayout, 0, 1, &m_indexingDescriptorSet, 0, nullptr);
+        vkCmdPushConstants(commandBuffer, m_indexingPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeParameters), &push);
+        vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+
+        // --- Dispatch Simulation Pass ---
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT
+        );
+
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_fluidComputePipeline);
+        vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_fluidComputePipelineLayout, 0, 1, &m_fluidComputeDescriptorSets[currentBuffer], 0, nullptr);
+        vkCmdPushConstants(commandBuffer, m_fluidComputePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(ComputeParameters), &push);
+        vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+
+        vks::tools::insertMemoryBarrier2(
+            commandBuffer,
+            VK_ACCESS_2_SHADER_WRITE_BIT | VK_ACCESS_2_SHADER_WRITE_BIT,
+            VK_ACCESS_2_SHADER_READ_BIT,
+            VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT
+        );
+
         currentBuffer = 1 - currentBuffer;
-
-        //SimulationStep(deltaTime);
-
-        //for (uint32_t i = 0; i < m_particles.size(); i++)
-        //{
-
-        //    m_particleVertices[i].pos = m_particles[i].position;
-        //    // calculate color
-        //    float t = glm::clamp(glm::length(m_particles[i].velocity) / m_params.maxSpeedForColor, 0.0f, 1.0f);
-        //    //m_particleVertices[i].color = utils::lerpColor2(t, m_params.minSpeedColor, m_params.maxSpeedColor);
-        //    std::vector<std::pair<float, glm::vec3>> colors{
-        //        {m_params.colorPoints.c1Point, m_params.colorPoints.color1},
-        //        {m_params.colorPoints.c2Point, m_params.colorPoints.color2},
-        //        {m_params.colorPoints.c3Point, m_params.colorPoints.color3},
-        //        {m_params.colorPoints.c4Point, m_params.colorPoints.color4}
-        //    };
-        //    m_particleVertices[i].color = utils::lerpColorVector(t, colors);
-        //    //m_particleVertices[i].color = utils::lerpColor2(t, m_params.colorPoints.color1, m_params.colorPoints.color2);
-        //}
-
-        //void* data = m_particleVertexBuffer->map();
-        //memcpy(data, m_particleVertices.data(), m_particleVertices.size() * sizeof(Vertex));
-        //m_particleVertexBuffer->unmap();
     }
 }
 
@@ -241,6 +306,402 @@ void FluidSimulator::draw(VkCommandBuffer commandBuffer, uint32_t currentFrameIn
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vBuff, offsets);
     vkCmdBindIndexBuffer(commandBuffer, iBuff, 0, VK_INDEX_TYPE_UINT32);
     vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(m_boxIndices.size()), 1, 0, 0, 0);
+}
+
+void FluidSimulator::createHashPassResources()
+{
+    VkDeviceSize bufferSize = sizeof(uint32_t) * MAX_PARTICLES;
+
+    // holds calculated hash on gpu
+    VulkanBuffer::createBuffer(
+        m_devices.getLogicalDevice(),
+        m_devices.getPhysicalDevice(),
+        bufferSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        m_particleHashesBuffer,
+        m_particleHashesMemory
+    );
+
+    // holds original index of each particle
+    VulkanBuffer::createBuffer(
+        m_devices.getLogicalDevice(),
+        m_devices.getPhysicalDevice(),
+        bufferSize,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        m_particleIndicesBuffer,
+        m_particleIndicesMemory
+    );
+
+    // hash descriptor set layout (input: particles, output: hashes, indices)
+    std::array<VkDescriptorSetLayoutBinding, 3> layoutBindings{};
+    layoutBindings[0].binding = 0;
+    layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[0].descriptorCount = 1;
+    layoutBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    layoutBindings[1].binding = 1;
+    layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[1].descriptorCount = 1;
+    layoutBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    layoutBindings[2].binding = 2;
+    layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[2].descriptorCount = 1;
+    layoutBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo hashDescriptorSetLayoutCI{};
+    hashDescriptorSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    hashDescriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    hashDescriptorSetLayoutCI.pBindings = layoutBindings.data();
+    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_devices.getLogicalDevice(), &hashDescriptorSetLayoutCI, nullptr, &m_hashDescriptorSetLayout));
+
+    // hash pipeline layout
+    VkPipelineLayoutCreateInfo hashPipelineLayoutCI{};
+    hashPipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    hashPipelineLayoutCI.setLayoutCount = 1;
+    hashPipelineLayoutCI.pSetLayouts = &m_hashDescriptorSetLayout;
+    VkPushConstantRange pushConstant{};
+    pushConstant.offset = 0;
+    pushConstant.size = sizeof(ComputeParameters);
+    pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    hashPipelineLayoutCI.pushConstantRangeCount = 1;
+    hashPipelineLayoutCI.pPushConstantRanges = &pushConstant;
+
+    VK_CHECK_RESULT(vkCreatePipelineLayout(m_devices.getLogicalDevice(), &hashPipelineLayoutCI, nullptr, &m_hashPipelineLayout));
+
+    // hash compute pipeline
+    VkShaderModule computeShaderModule = vks::tools::loadShader("shaders/hash.comp.spv", m_devices.getLogicalDevice());
+    
+    VkPipelineShaderStageCreateInfo shaderStageCI{};
+    shaderStageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageCI.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    shaderStageCI.module = computeShaderModule;
+    shaderStageCI.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCI{};
+    computePipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCI.layout = m_hashPipelineLayout;
+    computePipelineCI.stage = shaderStageCI;
+    VK_CHECK_RESULT(vkCreateComputePipelines(m_devices.getLogicalDevice(), VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &m_hashPipeline));
+
+    vkDestroyShaderModule(m_devices.getLogicalDevice(), computeShaderModule, nullptr);
+
+    // hash descriptor sets
+    std::vector<VkDescriptorSetLayout> layouts(2, m_hashDescriptorSetLayout);
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = m_descriptorPool;
+    allocInfo.descriptorSetCount = 2;
+    allocInfo.pSetLayouts = layouts.data();
+
+    m_hashDescriptorSets.resize(2);
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(m_devices.getLogicalDevice(), &allocInfo, m_hashDescriptorSets.data()));
+    
+    updateHashDescriptorSets();
+}
+
+void FluidSimulator::updateHashDescriptorSets()
+{
+    for (size_t i = 0; i < 2; i++)
+    {
+        VkDescriptorBufferInfo particleBufferInfo{};
+        particleBufferInfo.buffer = particleBuffers[i];
+        particleBufferInfo.offset = 0;
+        particleBufferInfo.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo hashesBufferInfo{};
+        hashesBufferInfo.buffer = m_particleHashesBuffer;
+        hashesBufferInfo.offset = 0;
+        hashesBufferInfo.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo indicesBufferInfo{};
+        indicesBufferInfo.buffer = m_particleIndicesBuffer;
+        indicesBufferInfo.offset = 0;
+        indicesBufferInfo.range = VK_WHOLE_SIZE;
+
+        std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = m_hashDescriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &particleBufferInfo;
+
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = m_hashDescriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &hashesBufferInfo;
+
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = m_hashDescriptorSets[i];
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &indicesBufferInfo;
+
+        vkUpdateDescriptorSets(m_devices.getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    }
+    
+}
+
+void FluidSimulator::createSortPassResources()
+{
+    // --- sort descirptor set layout ---
+    std::array<VkDescriptorSetLayoutBinding, 2> layoutBindings{};
+    // keys to sort (particle hashes)
+    layoutBindings[0].binding = 0;
+    layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[0].descriptorCount = 1;
+    layoutBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // values to sort alongside the keys (particle indices)
+    layoutBindings[1].binding = 1;
+    layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[1].descriptorCount = 1;
+    layoutBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+    descriptorSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    descriptorSetLayoutCI.pBindings = layoutBindings.data();
+    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_devices.getLogicalDevice(), &descriptorSetLayoutCI, nullptr, &m_sortDescriptorSetLayout));
+
+    // --- sort pipeline layout ---
+    VkPipelineLayoutCreateInfo pipelineLayoutCI{};
+    pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCI.setLayoutCount = 1;
+    pipelineLayoutCI.pSetLayouts = &m_sortDescriptorSetLayout;
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(SortPushConstants);
+    pipelineLayoutCI.pushConstantRangeCount = 1;
+    pipelineLayoutCI.pPushConstantRanges = &pushConstantRange;
+    VK_CHECK_RESULT(vkCreatePipelineLayout(m_devices.getLogicalDevice(), &pipelineLayoutCI, nullptr, &m_sortPipelineLayout));
+
+    // --- sort compute pipeline ---
+    VkShaderModule computeShaderModule = vks::tools::loadShader("shaders/sort.comp.spv", m_devices.getLogicalDevice());
+    VkPipelineShaderStageCreateInfo shaderStageCI{};
+    shaderStageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageCI.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    shaderStageCI.module = computeShaderModule;
+    shaderStageCI.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCI{};
+    computePipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCI.layout = m_sortPipelineLayout;
+    computePipelineCI.stage = shaderStageCI;
+    VK_CHECK_RESULT(vkCreateComputePipelines(m_devices.getLogicalDevice(), VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &m_sortPipeline));
+    vkDestroyShaderModule(m_devices.getLogicalDevice(), computeShaderModule, nullptr);
+
+    // --- descriptor set ---
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = m_descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &m_sortDescriptorSetLayout;
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(m_devices.getLogicalDevice(), &allocInfo, &m_sortDescriptorSet));
+    
+    VkDescriptorBufferInfo hashesBufferInfo{};
+    hashesBufferInfo.buffer = m_particleHashesBuffer;
+    hashesBufferInfo.offset = 0;
+    hashesBufferInfo.range = VK_WHOLE_SIZE;
+    VkDescriptorBufferInfo indicesBufferInfo{};
+    indicesBufferInfo.buffer = m_particleIndicesBuffer;
+    indicesBufferInfo.offset = 0;
+    indicesBufferInfo.range = VK_WHOLE_SIZE;
+
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = m_sortDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &hashesBufferInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = m_sortDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &indicesBufferInfo;
+    
+    vkUpdateDescriptorSets(m_devices.getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+}
+
+void FluidSimulator::dispatchSort(VkCommandBuffer commandBuffer)
+{
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_sortPipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, m_sortPipelineLayout, 0, 1, &m_sortDescriptorSet, 0, nullptr);
+
+    VkMemoryBarrier2 computeToComputeBarrier{};
+    computeToComputeBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+    computeToComputeBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeToComputeBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+    computeToComputeBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    computeToComputeBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+
+    VkDependencyInfo dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.memoryBarrierCount = 1;
+    dependencyInfo.pMemoryBarriers = &computeToComputeBarrier;
+
+    uint32_t numParticles = m_params.particleCount;
+
+    uint32_t paddedNumParticles = utils::nextPowerOf2(numParticles);
+    const uint32_t workGroupSize = 256;
+    uint32_t numWorkGroups = (paddedNumParticles + workGroupSize - 1) / workGroupSize;
+
+    for (uint32_t mergeSize = 2; mergeSize <= paddedNumParticles; mergeSize *= 2) 
+    {
+        for (uint32_t compareStride = mergeSize / 2; compareStride > 0; compareStride /= 2) 
+        {
+            SortPushConstants push{};
+            push.elementCount = paddedNumParticles;
+            push.mergeSize = mergeSize;
+            push.compareStride = compareStride;
+            vkCmdPushConstants(commandBuffer, m_sortPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SortPushConstants), &push);
+
+            vkCmdDispatch(commandBuffer, numWorkGroups, 1, 1);
+            vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+        }
+    }
+
+
+ /*   for (uint32_t stage = 0; stage < numStages; ++stage) 
+    {
+        for (uint32_t pass = 0; pass < stage + 1; ++pass) 
+        {
+            SortPushConstants push{};
+            push.elementCount = paddedNumParticles;
+            push.stage = stage;
+            push.pass = pass;
+
+            vkCmdPushConstants(commandBuffer, m_sortPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SortPushConstants), &push);
+            
+            
+            vkCmdDispatch(commandBuffer, numWorkGroups, 1, 1);
+            vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+        }
+    }*/
+
+
+    //// Keep your existing push constants structure
+    //SortPushConstants push{};
+    //push.count = numParticles;
+
+    //uint32_t groupCountX = (numParticles + 255) / 256;
+
+    //// Simple bitonic sort - just fix the loop logic
+    //for (uint32_t length = 2; length <= utils::nextPowerOf2(numParticles); length *= 2) {
+    //    for (uint32_t inc = length / 2; inc > 0; inc /= 2) {
+    //        push.groupWidth = inc;
+    //        push.groupHeight = length;
+
+    //        vkCmdPushConstants(commandBuffer, m_sortPipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(SortPushConstants), &push);
+    //        vkCmdDispatch(commandBuffer, groupCountX, 1, 1);
+    //        vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    //    }
+    //}
+}
+
+void FluidSimulator::createIndexingPassResources()
+{
+    // --- buffer to store index list ---
+    VulkanBuffer::createBuffer(
+        m_devices.getLogicalDevice(),
+        m_devices.getPhysicalDevice(),
+        sizeof(uint32_t) * HASH_TABLE_SIZE,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        m_cellStartIndicesBuffer,
+        m_cellStartIndicesMemory
+    );
+
+    // --- descriptor set layout ---
+    std::array<VkDescriptorSetLayoutBinding, 2> layoutBindings{};
+    // input sorted particle hashes
+    layoutBindings[0].binding = 0;
+    layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[0].descriptorCount = 1;
+    layoutBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // output cell start indices
+    layoutBindings[1].binding = 1;
+    layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[1].descriptorCount = 1;
+    layoutBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCI{};
+    descriptorSetLayoutCI.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    descriptorSetLayoutCI.bindingCount = static_cast<uint32_t>(layoutBindings.size());
+    descriptorSetLayoutCI.pBindings = layoutBindings.data();
+    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_devices.getLogicalDevice(), &descriptorSetLayoutCI, nullptr, &m_indexingDescriptorSetLayout));
+
+    // --- pipeline layout ---
+    VkPipelineLayoutCreateInfo pipelineLayoutCI{};
+    pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCI.setLayoutCount = 1;
+    pipelineLayoutCI.pSetLayouts = &m_indexingDescriptorSetLayout;
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(ComputeParameters);
+    pipelineLayoutCI.pushConstantRangeCount = 1;
+    pipelineLayoutCI.pPushConstantRanges = &pushConstantRange;
+    VK_CHECK_RESULT(vkCreatePipelineLayout(m_devices.getLogicalDevice(), &pipelineLayoutCI, nullptr, &m_indexingPipelineLayout));
+
+    // --- compute pipeline ---
+    VkShaderModule computeShaderModule = vks::tools::loadShader("shaders/calc_indices.comp.spv", m_devices.getLogicalDevice());
+    VkPipelineShaderStageCreateInfo shaderStageCI{};
+    shaderStageCI.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageCI.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    shaderStageCI.module = computeShaderModule;
+    shaderStageCI.pName = "main";
+
+    VkComputePipelineCreateInfo computePipelineCI{};
+    computePipelineCI.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    computePipelineCI.layout = m_indexingPipelineLayout;
+    computePipelineCI.stage = shaderStageCI;
+    VK_CHECK_RESULT(vkCreateComputePipelines(m_devices.getLogicalDevice(), VK_NULL_HANDLE, 1, &computePipelineCI, nullptr, &m_indexingPipeline));
+    vkDestroyShaderModule(m_devices.getLogicalDevice(), computeShaderModule, nullptr);
+
+    // --- descriptor set ---
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = m_descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &m_indexingDescriptorSetLayout;
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(m_devices.getLogicalDevice(), &allocInfo, &m_indexingDescriptorSet));
+
+    VkDescriptorBufferInfo hashesBufferInfo{};
+    hashesBufferInfo.buffer = m_particleHashesBuffer;
+    hashesBufferInfo.offset = 0;
+    hashesBufferInfo.range = VK_WHOLE_SIZE;
+    VkDescriptorBufferInfo cellIndicesBufferInfo{};
+    cellIndicesBufferInfo.buffer = m_cellStartIndicesBuffer;
+    cellIndicesBufferInfo.offset = 0;
+    cellIndicesBufferInfo.range = VK_WHOLE_SIZE;
+
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = m_indexingDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &hashesBufferInfo;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = m_indexingDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &cellIndicesBufferInfo;
+
+    vkUpdateDescriptorSets(m_devices.getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
 void FluidSimulator::createGraphicsPipelineLayout()
@@ -325,27 +786,43 @@ void FluidSimulator::createParticleBuffers()
 
 void FluidSimulator::createComputePipeline()
 {
-    std::array<VkDescriptorSetLayoutBinding, 2> layoutBindings{};
+    std::array<VkDescriptorSetLayoutBinding, 5> layoutBindings{};
+    // particle buffer IN
     layoutBindings[0].binding = 0;
     layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     layoutBindings[0].descriptorCount = 1;
     layoutBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
+    // particle buffer OUT
     layoutBindings[1].binding = 1;
     layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     layoutBindings[1].descriptorCount = 1;
     layoutBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // sorted particle hashes
+    layoutBindings[2].binding = 2;
+    layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[2].descriptorCount = 1;
+    layoutBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // sorted particle indices
+    layoutBindings[3].binding = 3;
+    layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[3].descriptorCount = 1;
+    layoutBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // cell start indices
+    layoutBindings[4].binding = 4;
+    layoutBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    layoutBindings[4].descriptorCount = 1;
+    layoutBindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.bindingCount = layoutBindings.size();
     layoutInfo.pBindings = layoutBindings.data();
-    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_devices.getLogicalDevice(), &layoutInfo, nullptr, &computeDescriptorSetLayout));
+    VK_CHECK_RESULT(vkCreateDescriptorSetLayout(m_devices.getLogicalDevice(), &layoutInfo, nullptr, &m_fluidComputeDescriptorSetLayout));
     
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
+    pipelineLayoutInfo.pSetLayouts = &m_fluidComputeDescriptorSetLayout;
     VkPushConstantRange pushConstant{};
     pushConstant.offset = 0;
     pushConstant.size = sizeof(ComputeParameters);
@@ -353,7 +830,7 @@ void FluidSimulator::createComputePipeline()
     pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
     pipelineLayoutInfo.pushConstantRangeCount = 1;
 
-    VK_CHECK_RESULT(vkCreatePipelineLayout(m_devices.getLogicalDevice(), &pipelineLayoutInfo, nullptr, &computePipelineLayout));
+    VK_CHECK_RESULT(vkCreatePipelineLayout(m_devices.getLogicalDevice(), &pipelineLayoutInfo, nullptr, &m_fluidComputePipelineLayout));
 
     VkShaderModule computeShaderModule = vks::tools::loadShader("shaders/fluid.comp.spv", m_devices.getLogicalDevice());
 
@@ -365,24 +842,24 @@ void FluidSimulator::createComputePipeline()
 
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipelineInfo.layout = computePipelineLayout;
+    pipelineInfo.layout = m_fluidComputePipelineLayout;
     pipelineInfo.stage = shaderStageInfo;
-    VK_CHECK_RESULT(vkCreateComputePipelines(m_devices.getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline));
+    VK_CHECK_RESULT(vkCreateComputePipelines(m_devices.getLogicalDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &m_fluidComputePipeline));
     
     vkDestroyShaderModule(m_devices.getLogicalDevice(), computeShaderModule, nullptr);
 }
 
 void FluidSimulator::createComputeDescriptorSets()
 {
-    std::vector<VkDescriptorSetLayout> layouts(2, computeDescriptorSetLayout);
+    std::vector<VkDescriptorSetLayout> layouts(2, m_fluidComputeDescriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = m_descriptorPool;
     allocInfo.descriptorSetCount = 2;
     allocInfo.pSetLayouts = layouts.data();
 
-    computeDescriptorSets.resize(2);
-    VK_CHECK_RESULT(vkAllocateDescriptorSets(m_devices.getLogicalDevice(), &allocInfo, computeDescriptorSets.data()));
+    m_fluidComputeDescriptorSets.resize(2);
+    VK_CHECK_RESULT(vkAllocateDescriptorSets(m_devices.getLogicalDevice(), &allocInfo, m_fluidComputeDescriptorSets.data()));
 
     updateComputeDescriptorSets();
 }
@@ -401,9 +878,24 @@ void FluidSimulator::updateComputeDescriptorSets()
         bufferInfoOut.offset = 0;
         bufferInfoOut.range = sizeof(Particle) * MAX_PARTICLES;
 
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+        VkDescriptorBufferInfo sortedHashesInfo{};
+        sortedHashesInfo.buffer = m_particleHashesBuffer;
+        sortedHashesInfo.offset = 0;
+        sortedHashesInfo.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo sortedIndicesInfo{};
+        sortedIndicesInfo.buffer = m_particleIndicesBuffer;
+        sortedIndicesInfo.offset = 0;
+        sortedIndicesInfo.range = VK_WHOLE_SIZE;
+
+        VkDescriptorBufferInfo cellStartsInfo{};
+        cellStartsInfo.buffer = m_cellStartIndicesBuffer;
+        cellStartsInfo.offset = 0;
+        cellStartsInfo.range = VK_WHOLE_SIZE;
+
+        std::array<VkWriteDescriptorSet, 5> descriptorWrites{};
         descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = computeDescriptorSets[i];
+        descriptorWrites[0].dstSet = m_fluidComputeDescriptorSets[i];
         descriptorWrites[0].dstBinding = 0;
         descriptorWrites[0].dstArrayElement = 0;
         descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -411,14 +903,38 @@ void FluidSimulator::updateComputeDescriptorSets()
         descriptorWrites[0].pBufferInfo = &bufferInfoIn;
 
         descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = computeDescriptorSets[i];
+        descriptorWrites[1].dstSet = m_fluidComputeDescriptorSets[i];
         descriptorWrites[1].dstBinding = 1;
         descriptorWrites[1].dstArrayElement = 0;
         descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         descriptorWrites[1].descriptorCount = 1;
         descriptorWrites[1].pBufferInfo = &bufferInfoOut;
 
-        vkUpdateDescriptorSets(m_devices.getLogicalDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = m_fluidComputeDescriptorSets[i];
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &sortedHashesInfo;
+
+        descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[3].dstSet = m_fluidComputeDescriptorSets[i];
+        descriptorWrites[3].dstBinding = 3;
+        descriptorWrites[3].dstArrayElement = 0;
+        descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[3].descriptorCount = 1;
+        descriptorWrites[3].pBufferInfo = &sortedIndicesInfo;
+
+        descriptorWrites[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[4].dstSet = m_fluidComputeDescriptorSets[i];
+        descriptorWrites[4].dstBinding = 4;
+        descriptorWrites[4].dstArrayElement = 0;
+        descriptorWrites[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[4].descriptorCount = 1;
+        descriptorWrites[4].pBufferInfo = &cellStartsInfo;
+
+        vkUpdateDescriptorSets(m_devices.getLogicalDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
     }
 }
 

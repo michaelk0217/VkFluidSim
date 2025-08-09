@@ -21,6 +21,9 @@ VulkanInstance::VulkanInstance(): instance(VK_NULL_HANDLE), debugMessenger(VK_NU
 	createInfo.pApplicationInfo = &appInfo;
 
 	auto extensions = getRequiredExtensions();
+
+	
+
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
 	createInfo.ppEnabledExtensionNames = extensions.data();
 
@@ -37,18 +40,43 @@ VulkanInstance::VulkanInstance(): instance(VK_NULL_HANDLE), debugMessenger(VK_NU
 	}*/
 	
 	VkDebugUtilsMessengerCreateInfoEXT debugMessengerCI{};
+	VkValidationFeaturesEXT validation_features{ VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT };
+	VkLayerSettingEXT layerSetting{};
+	
 	if (enableValidationLayers)
 	{
 		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 
 		populateDebugMessengerCreateInfo(debugMessengerCI);
+
+		std::vector<VkValidationFeatureEnableEXT> validation_feature_enables = { 
+			VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT 
+		};
+		validation_features.enabledValidationFeatureCount = static_cast<uint32_t>(validation_feature_enables.size());
+		validation_features.pEnabledValidationFeatures = validation_feature_enables.data();
+
+		layerSetting.pLayerName = "VK_LAYER_KHRONOS_validation";
+		layerSetting.pSettingName = "enables";
+		layerSetting.type = VK_LAYER_SETTING_TYPE_STRING_EXT;
+		layerSetting.valueCount = 1;
+		static const char* layerEnables = "VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT";
+		layerSetting.pValues = &layerEnables;
+		VkLayerSettingsCreateInfoEXT layerSettingsCI{};
+		layerSettingsCI.sType = VK_STRUCTURE_TYPE_LAYER_SETTINGS_CREATE_INFO_EXT;
+		layerSettingsCI.pNext = nullptr;
+		layerSettingsCI.settingCount = 1;
+		layerSettingsCI.pSettings = &layerSetting;
+
+		validation_features.pNext = &layerSettingsCI;
+		debugMessengerCI.pNext = &validation_features;
 		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugMessengerCI;
 	}
 	else
 	{
 		createInfo.enabledLayerCount = 0;
 		createInfo.pNext = nullptr;
+		//createInfo.pNext = &validation_features;
 	}
 
 	VK_CHECK_RESULT(vkCreateInstance(&createInfo, nullptr, &instance));
@@ -135,7 +163,7 @@ void VulkanInstance::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreat
 	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
 	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
 	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
 		VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;

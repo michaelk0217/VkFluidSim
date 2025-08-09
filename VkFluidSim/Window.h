@@ -30,6 +30,8 @@ public:
 	GLfloat getXChange();
 	GLfloat getYChange();
 
+	void getCursorPos(double& x, double& y);
+
 	void waitForRestoredSize();
 
 	void setFramebufferSizeCallback(GLFWframebuffersizefun callback);

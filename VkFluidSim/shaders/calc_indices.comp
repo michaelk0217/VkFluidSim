@@ -27,7 +27,9 @@ layout(push_constant) uniform PushConstants {
     vec4 color2;
     vec4 color3;
     float maxSpeedForColor;
-    float padding2[3];
+    float interactionStrength;
+    float interactionRadius;
+    uint mousePress;
 } pc;
 
 void main() {

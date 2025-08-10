@@ -40,7 +40,9 @@ layout(push_constant) uniform PushConstants {
     vec4 color2;
     vec4 color3;
     float maxSpeedForColor;
-    float padding2[3];
+    float interactionStrength;
+    float interactionRadius;
+    uint mousePress;
 } pc;
 
 const uint HASH_K1 = 374761393;
@@ -79,7 +81,9 @@ void main() {
     if (i >= pc.particleCount) return;
 
     // vec2 pos = particlesIn[i].position.xy;
-    vec2 pos = particlesIn[i].position.xy + (particlesIn[i].velocity.xy * pc.deltaTime);
+    // vec2 pos = particlesIn[i].position.xy + (particlesIn[i].velocity.xy * pc.deltaTime);
+    vec2 pos = particlesIn[i].position.xy + (particlesIn[i].velocity.xy * 1.0/120.0);
+
 
     ivec2 cell = PositionToCellCoord(pos, pc.smoothingRadius);
     uint hash = HashCell(cell);

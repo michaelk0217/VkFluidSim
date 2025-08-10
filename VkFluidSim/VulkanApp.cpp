@@ -96,6 +96,9 @@ void VulkanApp::mainLoop()
 
         imguiManager->newFrame();
         auto& simParams = fluidSimulator->getParameters();
+
+        simParams.mousePress = window->isMouseButtonPressed(GLFW_MOUSE_BUTTON_1);
+
         UiContextPacket uiPacket{ 
             deltaTime,
             frame_history,

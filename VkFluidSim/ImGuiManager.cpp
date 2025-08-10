@@ -186,8 +186,11 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::Text("Border Dimensions");
         ImGui::DragFloat("Width", &uiPacket.parameters.boxHalfWidth, 0.01f, 0.1f, 30.0f);
         ImGui::DragFloat("Height", &uiPacket.parameters.boxHalfHeight, 0.01f, 0.1f, 30.0f);
-        ImGui::Separator();
         
+        ImGui::Separator();
+        ImGui::Text("Mouse Interaction");
+        ImGui::DragFloat("Strength", &uiPacket.parameters.interactionStrength, 0.01f, -100.0f, 100.0f);
+        ImGui::DragFloat("Radius", &uiPacket.parameters.interactionRadius, 0.01f, 0.0f, 5.0f);
            
     }
     ImGui::End();

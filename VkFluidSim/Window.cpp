@@ -212,10 +212,12 @@ void Window::staticMouseButtonCallback(GLFWwindow* window, int button, int actio
 		if (action == GLFW_PRESS)
 		{
 			thisWindow->mouseButtons[button] = true;
+			//std::cout << "mouse button pressed" << std::endl;
 		}
 		else if (action == GLFW_RELEASE)
 		{
 			thisWindow->mouseButtons[button] = false;
+			//std::cout << "mouse button released" << std::endl;
 		}
 	}
 }

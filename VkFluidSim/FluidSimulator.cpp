@@ -189,6 +189,9 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer, glm:
         push.color2 = glm::vec4(m_params.colorPoints.color2, 1.0f);
         push.color3 = glm::vec4(m_params.colorPoints.color3, 1.0f);
         push.maxSpeedForColor = m_params.maxSpeedForColor;
+        push.interactionRadius = m_params.interactionRadius;
+        push.interactionStrength = m_params.interactionStrength;
+        push.mousePress = m_params.mousePress ? 1 : 0;
 
         uint32_t groupCountX = (m_params.particleCount + 255) / 256;
 

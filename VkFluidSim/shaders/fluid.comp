@@ -50,7 +50,10 @@ layout(push_constant) uniform PushConstants {
     vec4 color2;
     vec4 color3;
     float maxSpeedForColor;
-    float padding2[3];
+    // float padding2[3];
+    float interactionStrength;
+    float interactionRadius;
+    uint mousePress;
 } pc;
 
 const float PI = 3.14159265359;
@@ -110,38 +113,38 @@ uint GetKeyFromHash(uint hash) {
     return hash % HASH_TABLE_SIZE;
 }
 
-float CalculateDensityBruteForce(vec2 samplePoint) {
-    float density = 0.0;
-    for (uint i = 0; i < pc.particleCount; i++) {
-        float dst = length(particlesIn[i].position.xy - samplePoint);
-        density += pc.mass * SmoothingKernal(pc.smoothingRadius, dst);
-    }
-    return density;
-}
+// float CalculateDensityBruteForce(vec2 samplePoint) {
+//     float density = 0.0;
+//     for (uint i = 0; i < pc.particleCount; i++) {
+//         float dst = length(particlesIn[i].position.xy - samplePoint);
+//         density += pc.mass * SmoothingKernal(pc.smoothingRadius, dst);
+//     }
+//     return density;
+// }
 
-vec2 CalculatePressureForceBruteForce(uint index, float samplePointDensity) {
-    vec2 pos = particlesIn[index].position.xy;
-    float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
-    vec2 pressureForce = vec2(0.0);
-    for (uint i = 0; i < pc.particleCount; i++) {
-        if (i == index) continue;
+// vec2 CalculatePressureForceBruteForce(uint index, float samplePointDensity) {
+//     vec2 pos = particlesIn[index].position.xy;
+//     float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
+//     vec2 pressureForce = vec2(0.0);
+//     for (uint i = 0; i < pc.particleCount; i++) {
+//         if (i == index) continue;
 
-        vec2 offset = particlesIn[i].position.xy - pos;
-        // float dst = length(offset);
-        float sqrDst = dot(offset, offset);
+//         vec2 offset = particlesIn[i].position.xy - pos;
+//         // float dst = length(offset);
+//         float sqrDst = dot(offset, offset);
 
-        if (sqrDst < sqrRadius) {
-            float dst = sqrt(sqrDst);
-            vec2 dir = dst == 0.0 ? vec2(1.0, 0.0) : normalize(offset);
+//         if (sqrDst < sqrRadius) {
+//             float dst = sqrt(sqrDst);
+//             vec2 dir = dst == 0.0 ? vec2(1.0, 0.0) : normalize(offset);
 
-            float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
-            float iDensity = particlesIn[i].density;
-            float sharedPressure = CalculateSharedPressure(iDensity, samplePointDensity);
-            pressureForce += sharedPressure * dir * slope * pc.mass / max(iDensity, epsilon);
-        }
-    }
-    return pressureForce;
-}
+//             float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
+//             float iDensity = particlesIn[i].density;
+//             float sharedPressure = CalculateSharedPressure(iDensity, samplePointDensity);
+//             pressureForce += sharedPressure * dir * slope * pc.mass / max(iDensity, epsilon);
+//         }
+//     }
+//     return pressureForce;
+// }
 
 float CalcDensityForEachNeighbor(vec2 pos) {
     ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
@@ -169,7 +172,8 @@ float CalcDensityForEachNeighbor(vec2 pos) {
                 currIndex += 1;
                 if (neighborHash != key) break;
 
-                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                // vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * 1.0/120.0);
                 // vec2 neighborPos = particlesIn[neighborIndex].position.xy;
                 // vec2 offsetToNeighbor = neighborPos - pos;
                 // float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
@@ -207,7 +211,9 @@ vec2 CalcPressureForceForEachNeighbor() {
     float density = particlesIn[id].density;
     float pressure = ConvertDensityToPressure(density);
 
-    vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
+    // vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
+    vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * 1.0/120.0);
+
     // vec2 pos = particlesIn[id].position.xy;
     ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
     // float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
@@ -226,7 +232,9 @@ vec2 CalcPressureForceForEachNeighbor() {
 
                 if (neighborIndex == id) continue;
 
-                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                // vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
+                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * 1.0/120.0);
+
                 // vec2 neighborPos = particlesIn[neighborIndex].position.xy;
                 vec2 offsetToNeighbor = neighborPos - pos;
                 // float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
@@ -249,6 +257,64 @@ vec2 CalcPressureForceForEachNeighbor() {
     }
 
     return pressureForce;
+}
+
+// vec2 InteractionForce(vec2 inputPos, float radius, float strength, uint particleIndex) {
+//     vec2 interactionForce = vec2(0.0);
+//     vec2 offset = inputPos - particlesIn[particleIndex].position.xy;
+//     float sqrDst = dot(offset, offset);
+
+//     if (sqrDst < radius * radius) {
+//         float dst = sqrt(sqrDst);
+//         vec2 dirToInputPoint = dst <= epsilon ? vec2(0.0) : offset / dst;
+//         float centerT = 1 - dst / radius;
+//         interactionForce += (dirToInputPoint * strength - particlesIn[particleIndex].velocity.xy) * centerT;
+//     }
+
+//     return interactionForce;
+// }
+
+// vec2 ExternalForces(vec2 pos, vec2 velocity) {
+//     vec2 totalAccel = vec2(0.0, pc.gravity);
+
+//     if (pc.mousePress == 1) {
+//         vec2 inputPointOffset = pc.mousePos - pos;
+//         float sqrDst = dot(inputPointOffset, inputPointOffset);
+        
+//         if (sqrDst < pc.interactionRadius * pc.interactionRadius) {
+//             float dst = sqrt(sqrDst);
+//             float edgeT = dst / pc.interactionRadius;
+//             float centerT = 1 - edgeT;
+//             vec2 dirToCenter = inputPointOffset / dst;
+
+//             float gravityWeight = 1 - (centerT * clamp(pc.interactionStrength / 10, 0.0, 1.0));
+//             vec2 accel =  gravityAccel * gravityWeight * dirToCenter * centerT * pc.interactionStrength;
+//             accel -= velocity * centerT;
+//             return accel;
+//         }
+//     } 
+//     return totalAccel;
+// }
+
+vec2 ExternalForces(vec2 pos, vec2 velocity) {
+    vec2 totalAccel = vec2(0.0, pc.gravity);
+
+    if (pc.mousePress == 1) {
+        vec2 offset = pc.mousePos - pos;
+        float sqrDst = dot(offset, offset);
+        
+        if (sqrDst < pc.interactionRadius * pc.interactionRadius) {
+            float dst = sqrt(sqrDst);
+            
+            vec2 dir = (dst > epsilon) ? offset / dst : vec2(0.0);
+            
+            float centerT = 1.0 - (dst / pc.interactionRadius);
+            vec2 interactionAccel = (dir * pc.interactionStrength - velocity) * centerT;
+            totalAccel += interactionAccel;
+        }
+    } 
+    
+    return totalAccel;
 }
 
 // void ForEachNeighbor(inout float density, inout vec2 pressureForce) {
@@ -320,7 +386,9 @@ void main() {
 
     vec2 pos = particlesIn[index].position.xy;
     vec2 vel = particlesIn[index].velocity.xy;
-    vec2 predictedPosition = pos + vel * pc.deltaTime;
+    // vec2 predictedPosition = pos + vel * pc.deltaTime;
+    vec2 predictedPosition = pos + vel * 1.0/120.0;
+
 
     // todo: update to spatial grid later
     // brute force density calculation
@@ -336,15 +404,18 @@ void main() {
 
     float density = CalcDensityForEachNeighbor(predictedPosition);
     vec2 pressureForce = CalcPressureForceForEachNeighbor();
+    // vec2 totalForce  = pressureForce;
+    // if (pc.mousePress == 1) {
+    //     // debugPrintfEXT("mouse pressed");
+    //     totalForce += InteractionForce(pc.mousePos, pc.interactionRadius, pc.interactionStrength, index);
+    // }
 
-    // float density = 0;
-    // vec2 pressureForce = vec2(0.0);
-    // ForEachNeighbor(density, pressureForce);
 
     // update velocity
     vec2 pressureAcceleration = pressureForce / max(density, epsilon);
     vel += pressureAcceleration * pc.deltaTime;
-    vel += vec2(0.0, pc.gravity) * pc.deltaTime;
+    // vel += vec2(0.0, pc.gravity) * pc.deltaTime;
+    vel += ExternalForces(predictedPosition, vel) * pc.deltaTime;
 
     // update position
     pos += vel * pc.deltaTime;
@@ -364,19 +435,19 @@ void main() {
     vec4 color = lerpColorVector3(t, pc.color1, pc.color2, pc.color3);
 
     // ============ color debug =============
-    ivec2 mouse_cell = PositionToCellCoord(pc.mousePos, pc.smoothingRadius);
-    ivec2 particle_cell = PositionToCellCoord(pos, pc.smoothingRadius);
-    if (abs(int(mouse_cell.x) - int(particle_cell.x)) <= 1 && 
-        abs(int(mouse_cell.y) - int(particle_cell.y)) <= 1) {
-        color = vec4(1.0, 1.0, 0.0, 1.0);
-        // if in center
-        // if (mouse_cell.x == particle_cell.x && mouse_cell.y == particle_cell.y) {
-        //     color = vec4(1.0, 0.0, 0.0, 1.0); 
-        // }
-        if (GetKeyFromHash(HashCell(mouse_cell)) == GetKeyFromHash(HashCell(particle_cell))) {
-            color = vec4(1.0, 0.0, 0.0, 1.0); 
-        }
-    }
+    // ivec2 mouse_cell = PositionToCellCoord(pc.mousePos, pc.smoothingRadius);
+    // ivec2 particle_cell = PositionToCellCoord(pos, pc.smoothingRadius);
+    // if (abs(int(mouse_cell.x) - int(particle_cell.x)) <= 1 && 
+    //     abs(int(mouse_cell.y) - int(particle_cell.y)) <= 1) {
+    //     color = vec4(1.0, 1.0, 0.0, 1.0);
+    //     // if in center
+    //     // if (mouse_cell.x == particle_cell.x && mouse_cell.y == particle_cell.y) {
+    //     //     color = vec4(1.0, 0.0, 0.0, 1.0); 
+    //     // }
+    //     if (GetKeyFromHash(HashCell(mouse_cell)) == GetKeyFromHash(HashCell(particle_cell))) {
+    //         color = vec4(1.0, 0.0, 0.0, 1.0); 
+    //     }
+    // }
 
 
     particlesOut[index].position = vec4(pos, 0.0, 1.0);

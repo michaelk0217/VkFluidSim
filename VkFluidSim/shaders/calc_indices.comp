@@ -30,6 +30,8 @@ layout(push_constant) uniform PushConstants {
     float interactionStrength;
     float interactionRadius;
     uint mousePress;
+    float viscosityStrength;
+    float padding[3];
 } pc;
 
 void main() {

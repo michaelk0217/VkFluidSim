@@ -7,7 +7,8 @@ struct Particle {
     vec4 velocity;
     vec4 color;
     float density;
-    float _padding[3];
+    float nearDensity;
+    float _padding[2];
 };
 
 // Input buffer of all particles
@@ -43,6 +44,8 @@ layout(push_constant) uniform PushConstants {
     float interactionStrength;
     float interactionRadius;
     uint mousePress;
+    float viscosityStrength;
+    float padding[3];
 } pc;
 
 const uint HASH_K1 = 374761393;

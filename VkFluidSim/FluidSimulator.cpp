@@ -181,6 +181,7 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer, glm:
         push.smoothingRadius = m_params.smoothingRadius;
         push.targetDensity = m_params.targetDensity;
         push.pressureMultiplier = m_params.pressureMultiplier;
+        push.nearPressureMultiplier = m_params.nearPressureMultiplier;
         push.collisionDamping = m_params.collisionDamping;
         push.mass = m_params.mass;
         push.boxHalfSize = glm::vec2(m_params.boxHalfWidth, m_params.boxHalfHeight);
@@ -192,6 +193,8 @@ void FluidSimulator::update(float deltaTime, VkCommandBuffer commandBuffer, glm:
         push.interactionRadius = m_params.interactionRadius;
         push.interactionStrength = m_params.interactionStrength;
         push.mousePress = m_params.mousePress ? 1 : 0;
+        push.viscosityStrength = m_params.viscosityStrength;
+        
 
         uint32_t groupCountX = (m_params.particleCount + 255) / 256;
 

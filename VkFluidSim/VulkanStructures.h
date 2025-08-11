@@ -96,13 +96,11 @@ struct ShaderData {
 
 struct Particle {
 	alignas(16) glm::vec4 position;
-	//alignas(16) glm::vec4 predictedPosition;
 	alignas(16) glm::vec4 velocity;
 	alignas(16) glm::vec4 color;
 	float density;
-	//float pressure;
-
-	float _padding[3];
+	float nearDensity;
+	float _padding[2];
 };
 
 
@@ -128,17 +126,17 @@ struct FluidSimParameters
 	bool runSimulation = false;
 	bool resetSimulation = true;
 	float maxSpeedForColor = 5.0f;
-	/*glm::vec3 minSpeedColor{ 0.2f, 0.6f, 1.0f };
-	glm::vec3 maxSpeedColor{ 1.0f, 0.0f, 0.0f };*/
 	GradientColorsPoints colorPoints;
 	float smoothingRadius = 0.5f;
 	float mass = 1.0f;
 	float targetDensity = 3.0f;
 	float pressureMultiplier = 2.0f;
+	float nearPressureMultiplier = 1.0f;
 	float gravity = 0;
 	float interactionStrength = 5.0f;
 	float interactionRadius = 2.0f;
 	bool mousePress = false;
+	float viscosityStrength = 0.5f;
 };
 
 struct ComputeParameters
@@ -160,6 +158,9 @@ struct ComputeParameters
 	float interactionStrength;
 	float interactionRadius;
 	uint32_t mousePress;
+	float viscosityStrength;
+	float nearPressureMultiplier;
+	float padding[2];
 };
 
 struct SortPushConstants {

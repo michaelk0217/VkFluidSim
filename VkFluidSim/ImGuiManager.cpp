@@ -170,7 +170,8 @@ void ImGuiManager::buildUI(UiContextPacket& uiPacket)
         ImGui::DragFloat("Smoothing Radius", &uiPacket.parameters.smoothingRadius, 0.01f, 0.0f, 5.0f);
         ImGui::DragFloat("Target Density", &uiPacket.parameters.targetDensity, 0.01f,1.0f, 10.0f);
         ImGui::DragFloat("Pressure Multiplier", &uiPacket.parameters.pressureMultiplier, 0.01f, 0.0f, 500.0f);
-
+        ImGui::DragFloat("Near Pressure Multiplier", &uiPacket.parameters.nearPressureMultiplier, 0.01f, 0.0f, 500.0f);
+        ImGui::DragFloat("Viscosity Force", &uiPacket.parameters.viscosityStrength, 0.001f, 0.0f, 5.0f);
 
 
         ImGui::Separator();

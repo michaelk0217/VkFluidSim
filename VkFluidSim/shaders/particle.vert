@@ -12,7 +12,8 @@ struct Particle {
     vec4 velocity;
     vec4 color;
     float density;
-    float _padding[3];
+    float nearDensity;
+    float _padding[2];
 };
 
 layout(binding = 0) readonly buffer ParticleBuffer {

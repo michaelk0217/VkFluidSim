@@ -9,7 +9,8 @@ struct Particle {
     vec4 velocity;
     vec4 color;
     float density;
-    float _padding[3];
+    float nearDensity;
+    float _padding[2];
 };
 
 // input buffer (read only)
@@ -54,6 +55,9 @@ layout(push_constant) uniform PushConstants {
     float interactionStrength;
     float interactionRadius;
     uint mousePress;
+    float viscosityStrength;
+    float nearPressureMultiplier;
+    float padding[2];
 } pc;
 
 const float PI = 3.14159265359;
@@ -65,16 +69,51 @@ const uint HASH_K2 = 668265263;
 const uint HASH_K3 = 1274126177;
 const uint HASH_TABLE_SIZE = 1000003;
 
-float SmoothingKernal(float radius, float dst) {
-    if (dst >= radius) return 0.0;
-    float volume = (PI * pow(radius, 4)) / 6.0;
-    return (radius - dst) * (radius - dst) / volume;
+float DensityKernel(float radius, float dst) {
+    // if (dst >= radius) return 0.0;
+    // float volume = (PI * pow(radius, 4)) / 6.0;
+    // return (radius - dst) * (radius - dst) / volume;
+    if (dst < radius) {
+        float v = radius - dst;
+        return v * v * (6 / (PI * pow(radius, 4)));
+    }
+    return 0;
 }
 
-float SmoothingKernalDerivative(float radius, float dst) {
-    if (dst >= radius) return 0.0;
-    float scale = 12 / (pow(radius, 4) * PI);
-    return (dst - radius) * scale;
+float DensityKernalDerivative(float radius, float dst) {
+    // if (dst >= radius) return 0.0;
+    // float scale = 12 / (pow(radius, 4) * PI);
+    // return (dst - radius) * scale;
+    if (dst < radius) {
+        float v = radius - dst;
+        return -v * (12 / (PI * pow(radius, 4)));
+    }
+    return 0;
+}
+
+float NearDensityKernel(float radius, float dst) {
+    if (dst < radius) {
+        float v = radius - dst;
+        return v * v * v * (10 / (PI * pow(radius, 5)));
+    }
+    return 0;
+}
+
+float NearDensityKernelDerivative(float radius, float dst) {
+    if (dst < radius) {
+        float v = radius - dst;
+        return -v * v * (30 / (PI * pow(radius, 5)));
+    }
+    return 0;
+}
+
+
+
+float ViscosityKernel(float radius, float dst) {
+    if (dst < radius) {
+        float v = radius * radius - dst * dst;
+        return v * v * v * 4 / (PI * pow(pc.smoothingRadius, 8));
+    }
 }
 
 float ConvertDensityToPressure(float density) {
@@ -82,6 +121,11 @@ float ConvertDensityToPressure(float density) {
     float pressure = densityError * pc.pressureMultiplier;
     return pressure;
 }
+
+float ConvertNearDensityToPressure(float nearDensity) {
+    return pc.nearPressureMultiplier * nearDensity;
+}
+
 
 float CalculateSharedPressure(float density1, float density2) {
     float pressure1 = ConvertDensityToPressure(density1);
@@ -95,10 +139,6 @@ ivec2 PositionToCellCoord(vec2 pos, float radius) {
 }
 
 uint HashCell(ivec2 cell) {
-    // uint a = cell.x * HASH_K1;
-    // uint b = cell.y * HASH_K2;
-    // return a + b;
-
     uint x = uint(cell.x);
     uint y = uint(cell.y);
     uint h = x * HASH_K1 + y * HASH_K2;
@@ -146,15 +186,10 @@ uint GetKeyFromHash(uint hash) {
 //     return pressureForce;
 // }
 
-float CalcDensityForEachNeighbor(vec2 pos) {
+vec2 CalcDensityForEachNeighbor(vec2 pos) {
     ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
-    // float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
     float density = 0;
-    // uint neighborCount = 0; // debug counter
-    // if (gl_GlobalInvocationID.x == 0) {
-    //     debugPrintfEXT("Particle %d at (%f,%f) in cell (%d,%d)\n", 
-    // gl_GlobalInvocationID.x, pos.x, pos.y, originCell.x, originCell.y);
-    // }
+    float nearDensity = 0;
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
             ivec2 cell = ivec2(originCell.x + x, originCell.y + y);
@@ -162,44 +197,24 @@ float CalcDensityForEachNeighbor(vec2 pos) {
             uint key = GetKeyFromHash(hash);
             uint currIndex = start_indices[key];
 
-            // if (gl_GlobalInvocationID.x == 0) {
-            //     debugPrintfEXT("  Neighbor cell (%d,%d): hash=%u, key=%u\n", cell.x, cell.y, hash, key);
-            // }
-
             while (currIndex < pc.particleCount) {
                 uint neighborHash = sorted_keys[currIndex];
                 uint neighborIndex = sorted_indices[currIndex];
                 currIndex += 1;
                 if (neighborHash != key) break;
 
-                // vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
                 vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * 1.0/120.0);
-                // vec2 neighborPos = particlesIn[neighborIndex].position.xy;
-                // vec2 offsetToNeighbor = neighborPos - pos;
-                // float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
+
                 float dst = length(neighborPos - pos);
                 if (dst <= pc.smoothingRadius) {
-                    // if (sqrDstToNeighbor > sqrRadius) continue;
-                    // float dst = sqrt(sqrDstToNeighbor);
-                    density += SmoothingKernal(pc.smoothingRadius, dst);
-
-                    // if (gl_GlobalInvocationID.x == 0) {
-                    //     debugPrintfEXT("Valid Neighbor %d: pos=(%f,%f), dst=%f\n", 
-                    //         neighborIndex, neighborPos.x, neighborPos.y, dst);
-                    // }
-                } else {
-                    // debugPrintfEXT("Invalid neighbor %d: pos=(%f,%f), dst=%f\n", neighborIndex, neighborPos.x, neighborPos.y, dst);
+                    density += DensityKernel(pc.smoothingRadius, dst);
+                    nearDensity += NearDensityKernel(pc.smoothingRadius, dst);                   
                 }
-                
-
-                // neighborCount++;
             }
         }
     }
-    // if (gl_GlobalInvocationID.x == 0) {
-    //     debugPrintfEXT("Particle %d: neighbors=%d\n", gl_GlobalInvocationID.x, neighborCount);
-    // }
-    return density;
+
+    return vec2(density, nearDensity);
 }
 
 vec2 CalcPressureForceForEachNeighbor() {
@@ -209,7 +224,9 @@ vec2 CalcPressureForceForEachNeighbor() {
     if (id >= pc.particleCount) return pressureForce;
 
     float density = particlesIn[id].density;
+    float densityNear = particlesIn[id].nearDensity;
     float pressure = ConvertDensityToPressure(density);
+    float nearPressure = ConvertNearDensityToPressure(densityNear);
 
     // vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
     vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * 1.0/120.0);
@@ -246,11 +263,21 @@ vec2 CalcPressureForceForEachNeighbor() {
                 // float dst = sqrt(sqrDstToNeighbor);
                 vec2 dir = dst > 0 ? normalize(offsetToNeighbor) : vec2(1.0, 0.0);
                 
-                float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
+                float slope = DensityKernalDerivative(pc.smoothingRadius, dst);
+                float nearSlope = NearDensityKernelDerivative(pc.smoothingRadius, dst);
+
                 float neighborDensity = particlesIn[neighborIndex].density;
+                float neighborNearDensity = particlesIn[neighborIndex].nearDensity;
+
+
                 float neighborPressure = ConvertDensityToPressure(neighborDensity);
+                float neighborNearPressure = ConvertNearDensityToPressure(neighborNearDensity);
+
                 float sharedPressure = (pressure + neighborPressure) * 0.5;
-                pressureForce += dir *slope * sharedPressure * pc.mass / max(neighborDensity, epsilon);
+                float sharedNearPressure = (nearPressure + neighborNearPressure) * 0.5;
+
+                pressureForce += dir * slope * sharedPressure * pc.mass / max(neighborDensity, epsilon);
+                pressureForce += dir * nearSlope * sharedNearPressure * pc.mass / max(neighborNearDensity, epsilon);
             }
         }
         
@@ -259,42 +286,43 @@ vec2 CalcPressureForceForEachNeighbor() {
     return pressureForce;
 }
 
-// vec2 InteractionForce(vec2 inputPos, float radius, float strength, uint particleIndex) {
-//     vec2 interactionForce = vec2(0.0);
-//     vec2 offset = inputPos - particlesIn[particleIndex].position.xy;
-//     float sqrDst = dot(offset, offset);
+vec2 CalculateViscosityForce() {
+    uint id = gl_GlobalInvocationID.x;
+    vec2 predictedPosition = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
+    ivec2 originCell = PositionToCellCoord(predictedPosition, pc.smoothingRadius);
+    float sqrRadius = pc.smoothingRadius * pc.smoothingRadius;
 
-//     if (sqrDst < radius * radius) {
-//         float dst = sqrt(sqrDst);
-//         vec2 dirToInputPoint = dst <= epsilon ? vec2(0.0) : offset / dst;
-//         float centerT = 1 - dst / radius;
-//         interactionForce += (dirToInputPoint * strength - particlesIn[particleIndex].velocity.xy) * centerT;
-//     }
+    vec2 viscosityForce = vec2(0.0);
+    vec2 velocity = particlesIn[id].velocity.xy;
 
-//     return interactionForce;
-// }
+    for (int y = -1; y <= 1; ++y) {
+        for (int x = -1; x <= 1; ++x) {
+            uint hash = HashCell(ivec2(originCell.x + x, originCell.y + y));
+            uint key = GetKeyFromHash(hash);
+            uint currIndex = start_indices[key];
 
-// vec2 ExternalForces(vec2 pos, vec2 velocity) {
-//     vec2 totalAccel = vec2(0.0, pc.gravity);
+            while (currIndex < pc.particleCount) {
+                uint neighborHash = sorted_keys[currIndex];
+                uint neighborIndex = sorted_indices[currIndex];
+                currIndex += 1;
+                if (neighborHash != key) break;
+                if (neighborIndex == id) continue;
 
-//     if (pc.mousePress == 1) {
-//         vec2 inputPointOffset = pc.mousePos - pos;
-//         float sqrDst = dot(inputPointOffset, inputPointOffset);
-        
-//         if (sqrDst < pc.interactionRadius * pc.interactionRadius) {
-//             float dst = sqrt(sqrDst);
-//             float edgeT = dst / pc.interactionRadius;
-//             float centerT = 1 - edgeT;
-//             vec2 dirToCenter = inputPointOffset / dst;
+                vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * 1.0/120.0);
+                vec2 offsetToNeighbor = neighborPos - predictedPosition;
+                float sqrDstToNeighbor = dot(offsetToNeighbor, offsetToNeighbor);
+                if (sqrDstToNeighbor > sqrRadius) continue;
 
-//             float gravityWeight = 1 - (centerT * clamp(pc.interactionStrength / 10, 0.0, 1.0));
-//             vec2 accel =  gravityAccel * gravityWeight * dirToCenter * centerT * pc.interactionStrength;
-//             accel -= velocity * centerT;
-//             return accel;
-//         }
-//     } 
-//     return totalAccel;
-// }
+                float dst = sqrt(sqrDstToNeighbor);
+                vec2 neighborVelocity = particlesIn[neighborIndex].velocity.xy;
+                viscosityForce += (neighborVelocity - velocity) * ViscosityKernel(pc.smoothingRadius, dst);
+            }
+
+        }
+    }
+
+    return viscosityForce;
+}
 
 vec2 ExternalForces(vec2 pos, vec2 velocity) {
     vec2 totalAccel = vec2(0.0, pc.gravity);
@@ -316,53 +344,6 @@ vec2 ExternalForces(vec2 pos, vec2 velocity) {
     
     return totalAccel;
 }
-
-// void ForEachNeighbor(inout float density, inout vec2 pressureForce) {
-//     uint id = gl_GlobalInvocationID.x;
-//     if (id >= pc.particleCount) return;
-
-//     pressureForce = vec2(0.0);
-//     density = 0;
-
-//     float pressure = ConvertDensityToPressure(particlesIn[id].density);
-
-//     vec2 pos = particlesIn[id].position.xy + (particlesIn[id].velocity.xy * pc.deltaTime);
-//     ivec2 originCell = PositionToCellCoord(pos, pc.smoothingRadius);
-
-//     for (int y = -1; y <= 1; ++y) {
-//         for (int x = -1; x <= 1; ++x) {
-//             ivec2 cell = ivec2(originCell.x + x, originCell.y + y);
-//             uint hash = HashCell(cell);
-//             uint key = GetKeyFromHash(hash);
-//             uint currIndex = start_indices[key];
-
-//             while (currIndex < pc.particleCount) {
-//                 uint neighborHash = sorted_keys[currIndex];
-//                 uint neighborIndex = sorted_indices[currIndex];
-//                 if (neighborHash != key) break;
-
-//                 vec2 neighborPos = particlesIn[neighborIndex].position.xy + (particlesIn[neighborIndex].velocity.xy * pc.deltaTime);
-//                 vec2 offset = neighborPos - pos;
-//                 float dst = length(offset);
-
-//                 if (dst > pc.smoothingRadius) continue;
-
-//                 density += SmoothingKernal(pc.smoothingRadius, dst);
-
-//                 if (neighborIndex == id) continue;
-
-//                 vec2 dir = dst > 0 ? normalize(offset) : vec2(1.0, 0.0);
-                
-//                 float slope = SmoothingKernalDerivative(pc.smoothingRadius, dst);
-//                 float neighborDensity = particlesIn[neighborIndex].density;
-//                 float neighborPressure = ConvertDensityToPressure(neighborDensity);
-//                 float sharedPressure = (pressure + neighborPressure) * 0.5;
-//                 pressureForce += dir *slope * sharedPressure * pc.mass / max(neighborDensity, epsilon);
-//             }
-
-//         }
-//     }
-// }
 
 vec4 lerpColorVector2(float t, vec4 c1, vec4 c2) {
     return c1 * (1.0  - t) + (c2 * t);
@@ -389,34 +370,15 @@ void main() {
     // vec2 predictedPosition = pos + vel * pc.deltaTime;
     vec2 predictedPosition = pos + vel * 1.0/120.0;
 
-
-    // todo: update to spatial grid later
-    // brute force density calculation
-    // float density = CalculateDensityBruteForce(predictedPosition);
-
-
-    // float density = CalcDensityForEachNeighbor(predictedPosition);
-    // float density = 0;
-    
-    // todo: update to spatial grid later
-    // brute force pressure force calculation
-    // vec2 pressureForce = CalculatePressureForceBruteForce(index, density);
-
-    float density = CalcDensityForEachNeighbor(predictedPosition);
+    vec2 density = CalcDensityForEachNeighbor(predictedPosition);
     vec2 pressureForce = CalcPressureForceForEachNeighbor();
-    // vec2 totalForce  = pressureForce;
-    // if (pc.mousePress == 1) {
-    //     // debugPrintfEXT("mouse pressed");
-    //     totalForce += InteractionForce(pc.mousePos, pc.interactionRadius, pc.interactionStrength, index);
-    // }
-
 
     // update velocity
-    vec2 pressureAcceleration = pressureForce / max(density, epsilon);
+    vec2 pressureAcceleration = pressureForce / max(density.x, epsilon);
     vel += pressureAcceleration * pc.deltaTime;
     // vel += vec2(0.0, pc.gravity) * pc.deltaTime;
     vel += ExternalForces(predictedPosition, vel) * pc.deltaTime;
-
+    vel += CalculateViscosityForce() * pc.viscosityStrength * pc.deltaTime;
     // update position
     pos += vel * pc.deltaTime;
 
@@ -453,7 +415,8 @@ void main() {
     particlesOut[index].position = vec4(pos, 0.0, 1.0);
     particlesOut[index].velocity = vec4(vel, 0.0, 0.0);
     particlesOut[index].color = color;
-    particlesOut[index].density = density;
+    particlesOut[index].density = density.x;
+    particlesOut[index].nearDensity = density.y;
 }
 
 // void main() {

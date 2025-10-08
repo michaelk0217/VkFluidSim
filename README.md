@@ -4,6 +4,7 @@ This project is a real-time 2D fluid simulation built from scratch using the Vul
 
 The core of the simulation is an efficient spatial hash grid that accelerates the neighbor search process, allowing the  simulation to scale to a large number of particles while maintaining a high framerate.
 
+![Screenshot 1](visual_assets/fluidsim.png)
 ___
 ### Key Features
 * **Real-time SPH simulation**: implements density, pressure, viscosity, and external forces (gravity, mouse interaction)
